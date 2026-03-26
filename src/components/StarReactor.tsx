@@ -33,8 +33,6 @@ export default function StarReactor({ totalStars, isAdmin, cooldown = 500, onGif
   }, [starsInCycle]);
 
   const handleGiveStar = async () => {
-    if (!isAdmin) return;
-    
     const now = Date.now();
     if (now - lastClick < cooldown) {
       toast.error('Wait a moment... ❤️');
@@ -46,6 +44,12 @@ export default function StarReactor({ totalStars, isAdmin, cooldown = 500, onGif
       onGiftOpen?.();
       setGiftOpenedThisCycle(true);
       toast.success(`Gift #${currentGiftNumber} opening! 🎁`);
+      return;
+    }
+
+    // Only admin can give stars incrementally
+    if (!isAdmin) {
+      toast.error('Only admin can give stars before gift unlock');
       return;
     }
 
