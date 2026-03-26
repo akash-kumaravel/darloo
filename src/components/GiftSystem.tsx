@@ -47,7 +47,7 @@ const Typewriter = ({ text, speed = 50, onComplete }: { text: string; speed?: nu
   return <span>{displayedText}</span>;
 };
 
-export default function GiftSystem({ totalStars }: GiftSystemProps) {
+export default function GiftSystem({ totalStars, giftOpenRequest = false, onGiftOpened }: GiftSystemProps) {
   const [activeGiftSet, setActiveGiftSet] = useState<GiftSet | null>(null);
   const [showUnlock, setShowUnlock] = useState(false);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
