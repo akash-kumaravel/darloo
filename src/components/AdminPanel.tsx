@@ -58,9 +58,20 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   ]);
 
   useEffect(() => {
-    const unsubscribeMoods = onSnapshot(collection(db, 'moods'), (snap) => {
-      const moods = snap.docs.map(doc => doc.data() as UserMood);
+    const moodQuery = query(collection(db, 'moods'), orderBy('updatedAt', 'desc'));
+    const unsubscribeMoods = onSnapshot(moodQuery, (snap) => {
+      const moods = snap.docs.map(doc => {
+        const data = doc.data() as UserMood;
+        return {
+          ...data,
+          id: doc.id
+        };
+      });
+      console.log('Moods updated:', moods); // Debug log
       setUserMoods(moods);
+    }, (error) => {
+      console.error('Moods snapshot error:', error);
+      handleFirestoreError(error, OperationType.GET, 'moods');
     });
 
     const unsubscribeResponses = onSnapshot(

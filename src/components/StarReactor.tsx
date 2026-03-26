@@ -85,7 +85,14 @@ export default function StarReactor({ totalStars, isAdmin, cooldown = 500 }: Sta
         className="relative cursor-pointer"
         onClick={handleGiveStar}
       >
-        <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full scale-150" />
+        {/* Gift reveal background glow - only show when 25+ stars for gift unlock */}
+        {totalStars >= 25 && (
+          <motion.div 
+            animate={{ opacity: [0.2, 0.4, 0.2], scale: [1, 1.05, 1] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="absolute inset-0 bg-primary/20 blur-3xl rounded-full scale-150" 
+          />
+        )}
         <div className="relative glass p-8 rounded-full shadow-2xl border-4 border-white">
           <Star 
             className={cn(

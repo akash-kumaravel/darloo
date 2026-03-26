@@ -68,13 +68,26 @@ export function MoodProvider({ children }: { children: React.ReactNode }) {
     if (!user) return;
 
     try {
+      // Determine if current user is admin
+      const userEmail = user.email || '';
+      const isAdmin = userEmail === 'akashkumaravel3@gmail.com';
+      const displayName = isAdmin ? 'Admin' : (user.displayName || 'Darloo');
+
+      // Update the mood document with full data structure
       await setDoc(doc(db, 'moods', user.uid), {
         userId: user.uid,
-        userName: user.email === 'akashkumaravel3@gmail.com' ? 'Admin' : 'Darloo',
+        userName: displayName,
+        userEmail: userEmail,
         mood,
-        updatedAt: new Date().toISOString()
-      });
+        isAdmin,
+        updatedAt: new Date().toISOString(),
+        timestamp: new Date()
+      }, { merge: true }); // Use merge to not overwrite other fields
+
+      // Also log the mood change
+      console.log(`Mood updated: ${displayName} -> ${mood}`);
     } catch (error) {
+      console.error('Mood update error:', error);
       handleFirestoreError(error, OperationType.WRITE, `moods/${user.uid}`);
     }
   };
