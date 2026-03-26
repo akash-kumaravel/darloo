@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, 
   Send, 
@@ -10,7 +10,10 @@ import {
   Clock,
   Trash2,
   Settings,
-  X
+  X,
+  ChevronDown,
+  Zap,
+  BarChart3
 } from 'lucide-react';
 import { 
   doc, 
@@ -22,9 +25,10 @@ import {
   query,
   orderBy,
   limit,
-  getDocs
+  getDocs,
+  deleteDoc
 } from 'firebase/firestore';
-import { db, storage } from '../firebase';
+import { db, storage, auth } from '../firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { GameStats, UserProfile, DailyMessage, NextEvent, UserMood, ChoiceResponse } from '../types';
 import { toast } from 'sonner';
@@ -35,6 +39,10 @@ import { Smile, Heart as HeartIcon, Frown, Moon, Sparkles } from 'lucide-react';
 interface AdminPanelProps {
   stats: GameStats | null;
   profile: UserProfile | null;
+}
+
+interface EventItem extends NextEvent {
+  id?: string;
 }
 
 export default function AdminPanel({ stats, profile }: AdminPanelProps) {
@@ -48,6 +56,9 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   const [userMoods, setUserMoods] = useState<UserMood[]>([]);
   const [choiceResponses, setChoiceResponses] = useState<ChoiceResponse[]>([]);
   const [showChoiceForm, setShowChoiceForm] = useState(false);
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [starAdjustment, setStarAdjustment] = useState(0);
+  const [expandedSection, setExpandedSection] = useState<string>('');
 
   // Choice Moment Form State
   const [choiceQuestion, setChoiceQuestion] = useState('');
@@ -71,9 +82,21 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
       }
     );
 
+    const unsubscribeEvents = onSnapshot(
+      query(collection(db, 'events'), orderBy('createdAt', 'desc')),
+      (snap) => {
+        const eventList = snap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as EventItem));
+        setEvents(eventList);
+      }
+    );
+
     return () => {
       unsubscribeMoods();
       unsubscribeResponses();
+      unsubscribeEvents();
     };
   }, []);
   const [giftOptions, setGiftOptions] = useState([
@@ -99,15 +122,48 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   const updateNextEvent = async () => {
     if (!eventName || !eventDate) return;
     try {
-      await setDoc(doc(db, 'events', 'next'), {
+      await addDoc(collection(db, 'events'), {
         nextEvent: eventName,
-        countdown: new Date(eventDate).toISOString()
+        countdown: new Date(eventDate).toISOString(),
+        createdAt: new Date().toISOString()
       });
       toast.success('Event scheduled! 📅');
       setEventName('');
       setEventDate('');
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'events/next');
+      handleFirestoreError(error, OperationType.WRITE, 'events');
+    }
+  };
+
+  const deleteEvent = async (eventId: string) => {
+    try {
+      await deleteDoc(doc(db, 'events', eventId));
+      toast.success('Event deleted! 🗑️');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'events');
+      toast.error('Failed to delete event');
+    }
+  };
+
+  const adjustStars = async (change: number) => {
+    if (!auth.currentUser) {
+      toast.error('User not found');
+      return;
+    }
+
+    try {
+      const currentStars = stats?.totalStars || 0;
+      const newStars = Math.max(0, currentStars + change);
+      
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+        totalStars: newStars
+      });
+
+      toast.success(`Stars ${change > 0 ? 'added' : 'reduced'}! ✨ (${newStars} total)`);
+      setStarAdjustment(0);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'users');
+      toast.error('Failed to adjust stars');
     }
   };
 
@@ -277,319 +333,540 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-black tracking-tighter">GAME MASTER</h1>
-          <p className="text-slate-500 text-sm font-medium">Control the Loveverse</p>
-        </div>
-        <div className="bg-primary/10 p-3 rounded-2xl">
-          <Settings className="text-primary w-6 h-6" />
-        </div>
-      </div>
-
-      <StarReactor totalStars={stats?.totalStars || 0} isAdmin={true} />
-
-      {/* Mood Monitor */}
-      <div className="glass rounded-3xl p-6 space-y-4">
-        <div className="flex items-center gap-3 text-primary font-bold">
-          <Smile className="w-5 h-5" />
-          Mood Monitor
-        </div>
-        <div className="space-y-3">
-          {userMoods.length === 0 ? (
-            <p className="text-xs text-slate-400 italic">No moods reported yet...</p>
-          ) : (
-            userMoods.map((m, i) => (
-              <div key={i} className="flex items-center justify-between bg-white/30 p-3 rounded-2xl">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm">
-                    {getMoodIcon(m.mood)}
-                  </div>
-                  <div>
-                    <div className="text-sm font-bold text-slate-700">{m.userName}</div>
-                    <div className="text-[10px] text-slate-400 uppercase font-bold tracking-tighter">
-                      {new Date(m.updatedAt).toLocaleTimeString()}
-                    </div>
-                  </div>
-                </div>
-                <div className="text-xs font-black text-primary uppercase tracking-widest">
-                  {m.mood.replace('_', ' ')}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Choice Responses Monitor */}
-      <div className="glass rounded-3xl p-6 space-y-4">
-        <div className="flex items-center gap-3 text-primary font-bold">
-          <Sparkles className="w-5 h-5" />
-          Choice Responses
-        </div>
-        <div className="space-y-3">
-          {choiceResponses.length === 0 ? (
-            <p className="text-xs text-slate-400 italic">No responses yet...</p>
-          ) : (
-            choiceResponses.map((r, i) => (
-              <div key={i} className="bg-white/30 p-4 rounded-2xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-black text-slate-700">{r.userName}</span>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase">
-                    {new Date(r.createdAt).toLocaleTimeString()}
-                  </span>
-                </div>
-                <div className="text-xs text-slate-500 italic">"{r.question}"</div>
-                <div className="flex items-center gap-2 bg-white/50 p-2 rounded-xl">
-                  <span className="text-lg">{r.choiceEmoji}</span>
-                  <span className="text-xs font-bold text-primary uppercase tracking-widest">
-                    {r.choiceLabel}
-                  </span>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6">
-        {/* Daily Message */}
-        <div className="glass rounded-3xl p-6 space-y-4">
-          <div className="flex items-center gap-3 text-primary font-bold">
-            <MessageSquare className="w-5 h-5" />
-            Daily Message
+    <div className="space-y-4 pb-6">
+      {/* ADMIN HEADER */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-gradient-to-r from-primary to-secondary text-white rounded-3xl p-6"
+      >
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <h1 className="text-3xl font-black tracking-tighter">⚡ GAME MASTER</h1>
+            <p className="text-sm text-white/80 font-bold">Full control over Loveverse</p>
           </div>
-          <div className="flex gap-2">
-            <input 
-              type="text" 
-              value={dailyMsg}
-              onChange={(e) => setDailyMsg(e.target.value)}
-              placeholder="Type something sweet..."
-              className="flex-1 bg-white/50 border-none rounded-xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
-            />
-            <button 
-              onClick={updateDailyMessage}
-              className="bg-primary text-white p-3 rounded-xl shadow-lg shadow-primary/20"
+          <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center">
+            <Settings className="w-7 h-7" />
+          </div>
+        </div>
+      </motion.div>
+
+      {/* STAR MONITOR & CONTROL */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.1 }}
+        className="glass rounded-3xl p-6 space-y-4"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 text-primary font-bold text-lg">
+            <Zap className="w-6 h-6" />
+            Star Control
+          </div>
+          <div className="text-3xl font-black text-primary">{stats?.totalStars || 0} ⭐</div>
+        </div>
+        
+        <div className="flex gap-2">
+          <button
+            onClick={() => adjustStars(-5)}
+            className="flex-1 bg-red-500/20 hover:bg-red-500/40 text-red-600 font-black py-3 rounded-xl transition-colors active:scale-95"
+          >
+            - 5 Stars
+          </button>
+          <button
+            onClick={() => adjustStars(-1)}
+            className="flex-1 bg-orange-500/20 hover:bg-orange-500/40 text-orange-600 font-black py-3 rounded-xl transition-colors active:scale-95"
+          >
+            - 1 Star
+          </button>
+          <button
+            onClick={() => adjustStars(5)}
+            className="flex-1 bg-green-500/20 hover:bg-green-500/40 text-green-600 font-black py-3 rounded-xl transition-colors active:scale-95"
+          >
+            + 5 Stars
+          </button>
+          <button
+            onClick={() => adjustStars(25)}
+            className="flex-1 bg-primary/20 hover:bg-primary/40 text-primary font-black py-3 rounded-xl transition-colors active:scale-95"
+          >
+            + 25 Stars
+          </button>
+        </div>
+      </motion.div>
+
+      {/* EVENTS MANAGEMENT */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.2 }}
+        className="glass rounded-3xl overflow-hidden"
+      >
+        <motion.button
+          onClick={() => setExpandedSection(expandedSection === 'events' ? '' : 'events')}
+          className="w-full p-6 flex items-center justify-between hover:bg-white/5 transition-colors"
+        >
+          <div className="flex items-center gap-3 text-primary font-bold text-lg">
+            <Calendar className="w-6 h-6" />
+            Events Management
+          </div>
+          <motion.div
+            animate={{ rotate: expandedSection === 'events' ? 180 : 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <ChevronDown className="w-5 h-5 text-primary" />
+          </motion.div>
+        </motion.button>
+
+        <AnimatePresence>
+          {expandedSection === 'events' && (
+            <motion.div
+              initial={{ height: 0 }}
+              animate={{ height: 'auto' }}
+              exit={{ height: 0 }}
+              transition={{ duration: 0.3 }}
+              className="overflow-hidden border-t border-white/10"
             >
-              <Send className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Next Event */}
-        <div className="glass rounded-3xl p-6 space-y-4">
-          <div className="flex items-center gap-3 text-primary font-bold">
-            <Calendar className="w-5 h-5" />
-            Next Big Event
-          </div>
-          <div className="space-y-3">
-            <input 
-              type="text" 
-              value={eventName}
-              onChange={(e) => setEventName(e.target.value)}
-              placeholder="Event Name (e.g. Anniversary)"
-              className="w-full bg-white/50 border-none rounded-xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
-            />
-            <input 
-              type="date" 
-              value={eventDate}
-              onChange={(e) => setEventDate(e.target.value)}
-              className="w-full bg-white/50 border-none rounded-xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
-            />
-            <button 
-              onClick={updateNextEvent}
-              className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg shadow-primary/20"
-            >
-              Schedule Event
-            </button>
-          </div>
-        </div>
-
-        {/* Memory Upload */}
-        <div className="glass rounded-3xl p-6 space-y-4">
-          <div className="flex items-center gap-3 text-primary font-bold">
-            <ImageIcon className="w-5 h-5" />
-            Memory of the Week
-          </div>
-          <div className="space-y-3">
-            <input 
-              type="file" 
-              accept="image/*"
-              onChange={(e) => setMemoryImage(e.target.files?.[0] || null)}
-              className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-            />
-            <input 
-              type="text" 
-              value={memoryCaption}
-              onChange={(e) => setMemoryCaption(e.target.value)}
-              placeholder="Caption for this memory..."
-              className="w-full bg-white/50 border-none rounded-xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
-            />
-            <button 
-              onClick={uploadMemory}
-              disabled={isUploading}
-              className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg shadow-primary/20 disabled:opacity-50"
-            >
-              {isUploading ? 'Uploading...' : 'Upload Memory'}
-            </button>
-          </div>
-        </div>
-
-        {/* Gift Management */}
-        <div className="glass rounded-3xl p-6 space-y-4">
-          <div className="flex items-center justify-between text-primary font-bold">
-            <div className="flex items-center gap-3">
-              <Gift className="w-5 h-5" />
-              Gift Management
-            </div>
-            {showGiftForm && (
-              <button onClick={() => setShowGiftForm(false)}>
-                <X className="w-5 h-5 text-slate-400" />
-              </button>
-            )}
-          </div>
-          
-          {!showGiftForm ? (
-            <button 
-              onClick={() => setShowGiftForm(true)}
-              className="w-full py-4 border-2 border-dashed border-primary/30 rounded-2xl flex items-center justify-center gap-2 text-primary font-bold hover:bg-primary/5 transition-colors"
-            >
-              <Plus className="w-5 h-5" />
-              Create New Gift Set
-            </button>
-          ) : (
-            <div className="space-y-6">
-              {giftOptions.map((opt, i) => (
-                <div key={i} className="bg-white/30 p-4 rounded-2xl space-y-3">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Option {i + 1}</div>
+              <div className="p-6 space-y-4">
+                {/* Create Event Form */}
+                <div className="space-y-3 pb-4 border-b border-white/10">
+                  <div className="text-sm font-bold text-primary uppercase tracking-widest">Create New Event</div>
                   <input 
                     type="text" 
-                    value={opt.title}
-                    onChange={(e) => {
-                      const newOpts = [...giftOptions];
-                      newOpts[i].title = e.target.value;
-                      setGiftOptions(newOpts);
-                    }}
-                    placeholder="Gift Title"
-                    className="w-full bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
+                    value={eventName}
+                    onChange={(e) => setEventName(e.target.value)}
+                    placeholder="Event Name"
+                    className="w-full bg-white/50 border-none rounded-2xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm font-medium"
                   />
+                  <input 
+                    type="datetime-local" 
+                    value={eventDate}
+                    onChange={(e) => setEventDate(e.target.value)}
+                    className="w-full bg-white/50 border-none rounded-2xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
+                  />
+                  <button 
+                    onClick={updateNextEvent}
+                    className="w-full bg-primary hover:bg-primary/90 text-white py-3 rounded-2xl font-black transition-colors active:scale-95"
+                  >
+                    + Schedule Event
+                  </button>
+                </div>
+
+                {/* Events List */}
+                <div className="space-y-2">
+                  <div className="text-sm font-bold text-slate-500 uppercase tracking-widest">Active Events</div>
+                  {events.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic py-3">No events scheduled</p>
+                  ) : (
+                    events.map((evt, idx) => (
+                      <motion.div
+                        key={evt.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        transition={{ delay: idx * 0.05 }}
+                        className="flex items-center justify-between bg-white/30 p-4 rounded-2xl group hover:bg-white/40 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-slate-800 truncate">{evt.nextEvent}</div>
+                          <div className="text-xs text-slate-500 mt-1">
+                            {new Date(evt.countdown).toLocaleDateString()} {new Date(evt.countdown).toLocaleTimeString()}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => evt.id && deleteEvent(evt.id)}
+                          className="ml-3 p-2 bg-red-500/20 hover:bg-red-500/40 text-red-600 rounded-xl opacity-0 group-hover:opacity-100 transition-all"
+                          title="Delete event"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </motion.div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+
+      {/* MESSAGING & CONTENT */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.3 }}
+        className="glass rounded-3xl overflow-hidden"
+      >
+        <motion.button
+          onClick={() => setExpandedSection(expandedSection === 'messaging' ? '' : 'messaging')}
+          className="w-full p-6 flex items-center justify-between hover:bg-white/5 transition-colors"
+        >
+          <div className="flex items-center gap-3 text-primary font-bold text-lg">
+            <MessageSquare className="w-6 h-6" />
+            Messaging & Content
+          </div>
+          <motion.div
+            animate={{ rotate: expandedSection === 'messaging' ? 180 : 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <ChevronDown className="w-5 h-5 text-primary" />
+          </motion.div>
+        </motion.button>
+
+        <AnimatePresence>
+          {expandedSection === 'messaging' && (
+            <motion.div
+              initial={{ height: 0 }}
+              animate={{ height: 'auto' }}
+              exit={{ height: 0 }}
+              transition={{ duration: 0.3 }}
+              className="overflow-hidden border-t border-white/10"
+            >
+              <div className="p-6 space-y-4 border-b border-white/10">
+                <div className="text-sm font-bold text-slate-500 uppercase tracking-widest">Daily Message</div>
+                <div className="flex gap-2">
                   <input 
                     type="text" 
-                    value={opt.message}
-                    onChange={(e) => {
-                      const newOpts = [...giftOptions];
-                      newOpts[i].message = e.target.value;
-                      setGiftOptions(newOpts);
-                    }}
-                    placeholder="Gift Message"
-                    className="w-full bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
+                    value={dailyMsg}
+                    onChange={(e) => setDailyMsg(e.target.value)}
+                    placeholder="Type something sweet..."
+                    className="flex-1 bg-white/50 border-none rounded-2xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
                   />
-                  <input 
-                    type="file" 
-                    accept="image/*"
-                    onChange={(e) => {
-                      const newOpts = [...giftOptions];
-                      newOpts[i].image = e.target.files?.[0] || null;
-                      setGiftOptions(newOpts);
-                    }}
-                    className="w-full text-[10px] file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-primary/10 file:text-primary"
-                  />
+                  <button 
+                    onClick={updateDailyMessage}
+                    className="bg-primary hover:bg-primary/90 text-white p-3 rounded-2xl shadow-lg shadow-primary/20"
+                  >
+                    <Send className="w-5 h-5" />
+                  </button>
                 </div>
-              ))}
-              <button 
-                onClick={createGiftSet}
-                disabled={isUploading}
-                className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/20 disabled:opacity-50"
-              >
-                {isUploading ? 'Creating...' : 'Create Gift Set'}
-              </button>
-            </div>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div className="text-sm font-bold text-slate-500 uppercase tracking-widest">Memory of the Week</div>
+                <input 
+                  type="file" 
+                  accept="image/*"
+                  onChange={(e) => setMemoryImage(e.target.files?.[0] || null)}
+                  className="w-full text-xs file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-primary/20 file:text-primary hover:file:bg-primary/30 cursor-pointer"
+                />
+                <input 
+                  type="text" 
+                  value={memoryCaption}
+                  onChange={(e) => setMemoryCaption(e.target.value)}
+                  placeholder="Memory caption..."
+                  className="w-full bg-white/50 border-none rounded-2xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
+                />
+                <button 
+                  onClick={uploadMemory}
+                  disabled={isUploading}
+                  className="w-full bg-primary hover:bg-primary/90 text-white py-3 rounded-2xl font-bold disabled:opacity-50 transition-colors active:scale-95"
+                >
+                  {isUploading ? '⏳ Uploading...' : '📤 Upload Memory'}
+                </button>
+              </div>
+            </motion.div>
           )}
-        </div>
+        </AnimatePresence>
+      </motion.div>
 
-        {/* Choice Moments */}
-        <div className="glass rounded-3xl p-6 space-y-4">
-          <div className="flex items-center justify-between text-primary font-bold">
-            <div className="flex items-center gap-3">
-              <Sparkles className="w-5 h-5" />
-              Choice Moments
-            </div>
-            {showChoiceForm && (
-              <button onClick={() => setShowChoiceForm(false)}>
-                <X className="w-5 h-5 text-slate-400" />
-              </button>
-            )}
+      {/* MONITORING */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.4 }}
+        className="glass rounded-3xl overflow-hidden"
+      >
+        <motion.button
+          onClick={() => setExpandedSection(expandedSection === 'monitoring' ? '' : 'monitoring')}
+          className="w-full p-6 flex items-center justify-between hover:bg-white/5 transition-colors"
+        >
+          <div className="flex items-center gap-3 text-primary font-bold text-lg">
+            <BarChart3 className="w-6 h-6" />
+            Mood & Response Monitor
           </div>
+          <motion.div
+            animate={{ rotate: expandedSection === 'monitoring' ? 180 : 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <ChevronDown className="w-5 h-5 text-primary" />
+          </motion.div>
+        </motion.button>
 
-          {!showChoiceForm ? (
-            <button 
-              onClick={() => setShowChoiceForm(true)}
-              className="w-full py-4 border-2 border-dashed border-primary/30 rounded-2xl flex items-center justify-center gap-2 text-primary font-bold hover:bg-primary/5 transition-colors"
+        <AnimatePresence>
+          {expandedSection === 'monitoring' && (
+            <motion.div
+              initial={{ height: 0 }}
+              animate={{ height: 'auto' }}
+              exit={{ height: 0 }}
+              transition={{ duration: 0.3 }}
+              className="overflow-hidden border-t border-white/10"
             >
-              <Plus className="w-5 h-5" />
-              Activate Choice Moment
-            </button>
-          ) : (
-            <div className="space-y-4">
-              <input 
-                type="text" 
-                value={choiceQuestion}
-                onChange={(e) => setChoiceQuestion(e.target.value)}
-                placeholder="Question (e.g. What should we do today?)"
-                className="w-full bg-white/50 border-none rounded-xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
-              />
-              <div className="space-y-3">
-                {choiceOptions.map((opt, i) => (
-                  <div key={i} className="bg-white/30 p-4 rounded-2xl space-y-2">
-                    <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        value={opt.emoji}
-                        onChange={(e) => {
-                          const newOpts = [...choiceOptions];
-                          newOpts[i].emoji = e.target.value;
-                          setChoiceOptions(newOpts);
-                        }}
-                        placeholder="Emoji"
-                        className="w-12 bg-white/50 border-none rounded-xl px-2 py-2 text-center text-sm outline-none"
-                      />
-                      <input 
-                        type="text" 
-                        value={opt.label}
-                        onChange={(e) => {
-                          const newOpts = [...choiceOptions];
-                          newOpts[i].label = e.target.value;
-                          setChoiceOptions(newOpts);
-                        }}
-                        placeholder="Option Label"
-                        className="flex-1 bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
-                      />
+              <div className="p-6 space-y-6">
+                {/* Mood Monitor */}
+                <div className="space-y-3">
+                  <div className="text-sm font-bold text-slate-500 uppercase tracking-widest">Recent Moods</div>
+                  {userMoods.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic py-3">No moods reported yet</p>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {userMoods.map((m, i) => (
+                        <div key={i} className="flex items-center justify-between bg-white/30 p-3 rounded-2xl">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm shrink-0">
+                              {getMoodIcon(m.mood)}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-slate-700 truncate">{m.userName}</div>
+                              <div className="text-[9px] text-slate-400">{new Date(m.updatedAt).toLocaleTimeString()}</div>
+                            </div>
+                          </div>
+                          <div className="text-[9px] font-black text-primary uppercase tracking-widest shrink-0">
+                            {m.mood.replace('_', ' ')}
+                          </div>
+                        </div>
+                      ))}
                     </div>
+                  )}
+                </div>
+
+                {/* Choice Responses */}
+                <div className="border-t border-white/10 pt-4 space-y-3">
+                  <div className="text-sm font-bold text-slate-500 uppercase tracking-widest">Choice Responses</div>
+                  {choiceResponses.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic py-3">No responses yet</p>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {choiceResponses.map((r, i) => (
+                        <div key={i} className="bg-white/20 p-3 rounded-2xl space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-700">{r.userName}</span>
+                            <span className="text-[9px] text-slate-400">{new Date(r.createdAt).toLocaleTimeString()}</span>
+                          </div>
+                          <div className="flex items-center gap-2 bg-white/40 p-2 rounded-xl">
+                            <span className="text-base">{r.choiceEmoji}</span>
+                            <span className="text-[9px] font-bold text-primary uppercase">{r.choiceLabel}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+
+      {/* GIFT MANAGEMENT */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.5 }}
+        className="glass rounded-3xl overflow-hidden"
+      >
+        <motion.button
+          onClick={() => setExpandedSection(expandedSection === 'gifts' ? '' : 'gifts')}
+          className="w-full p-6 flex items-center justify-between hover:bg-white/5 transition-colors"
+        >
+          <div className="flex items-center gap-3 text-primary font-bold text-lg">
+            <Gift className="w-6 h-6" />
+            Gift Management
+          </div>
+          <motion.div
+            animate={{ rotate: expandedSection === 'gifts' ? 180 : 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <ChevronDown className="w-5 h-5 text-primary" />
+          </motion.div>
+        </motion.button>
+
+        <AnimatePresence>
+          {expandedSection === 'gifts' && (
+            <motion.div
+              initial={{ height: 0 }}
+              animate={{ height: 'auto' }}
+              exit={{ height: 0 }}
+              transition={{ duration: 0.3 }}
+              className="overflow-hidden border-t border-white/10"
+            >
+              <div className="p-6 space-y-4">
+                {!showGiftForm ? (
+                  <button 
+                    onClick={() => setShowGiftForm(true)}
+                    className="w-full py-4 border-2 border-dashed border-primary/30 rounded-2xl flex items-center justify-center gap-2 text-primary font-bold hover:bg-primary/5 transition-colors"
+                  >
+                    <Plus className="w-5 h-5" />
+                    Create New Gift Set
+                  </button>
+                ) : (
+                  <div className="space-y-4">
+                    <button 
+                      onClick={() => setShowGiftForm(false)}
+                      className="w-full text-right text-slate-500 hover:text-slate-700 text-sm font-bold"
+                    >
+                      ✕ Close
+                    </button>
+                    {giftOptions.map((opt, i) => (
+                      <div key={i} className="bg-white/30 p-4 rounded-2xl space-y-3">
+                        <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">Option {i + 1}</div>
+                        <input 
+                          type="text" 
+                          value={opt.title}
+                          onChange={(e) => {
+                            const newOpts = [...giftOptions];
+                            newOpts[i].title = e.target.value;
+                            setGiftOptions(newOpts);
+                          }}
+                          placeholder="Gift Title"
+                          className="w-full bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
+                        />
+                        <input 
+                          type="text" 
+                          value={opt.message}
+                          onChange={(e) => {
+                            const newOpts = [...giftOptions];
+                            newOpts[i].message = e.target.value;
+                            setGiftOptions(newOpts);
+                          }}
+                          placeholder="Gift Message"
+                          className="w-full bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
+                        />
+                        <input 
+                          type="file" 
+                          accept="image/*"
+                          onChange={(e) => {
+                            const newOpts = [...giftOptions];
+                            newOpts[i].image = e.target.files?.[0] || null;
+                            setGiftOptions(newOpts);
+                          }}
+                          className="w-full text-xs file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-primary/10 file:text-primary cursor-pointer"
+                        />
+                      </div>
+                    ))}
+                    <button 
+                      onClick={createGiftSet}
+                      disabled={isUploading}
+                      className="w-full bg-primary hover:bg-primary/90 text-white py-3 rounded-2xl font-bold disabled:opacity-50 transition-colors active:scale-95"
+                    >
+                      {isUploading ? '⏳ Creating...' : '🎁 Create Gift Set'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+
+      {/* CHOICE MOMENTS MANAGEMENT */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.6 }}
+        className="glass rounded-3xl overflow-hidden"
+      >
+        <motion.button
+          onClick={() => setExpandedSection(expandedSection === 'choices' ? '' : 'choices')}
+          className="w-full p-6 flex items-center justify-between hover:bg-white/5 transition-colors"
+        >
+          <div className="flex items-center gap-3 text-primary font-bold text-lg">
+            <Sparkles className="w-6 h-6" />
+            Choice Moments
+          </div>
+          <motion.div
+            animate={{ rotate: expandedSection === 'choices' ? 180 : 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <ChevronDown className="w-5 h-5 text-primary" />
+          </motion.div>
+        </motion.button>
+
+        <AnimatePresence>
+          {expandedSection === 'choices' && (
+            <motion.div
+              initial={{ height: 0 }}
+              animate={{ height: 'auto' }}
+              exit={{ height: 0 }}
+              transition={{ duration: 0.3 }}
+              className="overflow-hidden border-t border-white/10"
+            >
+              <div className="p-6 space-y-4">
+                {!showChoiceForm ? (
+                  <button 
+                    onClick={() => setShowChoiceForm(true)}
+                    className="w-full py-4 border-2 border-dashed border-primary/30 rounded-2xl flex items-center justify-center gap-2 text-primary font-bold hover:bg-primary/5 transition-colors"
+                  >
+                    <Plus className="w-5 h-5" />
+                    Activate Choice Moment
+                  </button>
+                ) : (
+                  <div className="space-y-4">
+                    <button 
+                      onClick={() => setShowChoiceForm(false)}
+                      className="w-full text-right text-slate-500 hover:text-slate-700 text-sm font-bold"
+                    >
+                      ✕ Close
+                    </button>
                     <input 
                       type="text" 
-                      value={opt.response}
-                      onChange={(e) => {
-                        const newOpts = [...choiceOptions];
-                        newOpts[i].response = e.target.value;
-                        setChoiceOptions(newOpts);
-                      }}
-                      placeholder="Response Message"
-                      className="w-full bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
+                      value={choiceQuestion}
+                      onChange={(e) => setChoiceQuestion(e.target.value)}
+                      placeholder="Question (e.g. What should we do today?)"
+                      className="w-full bg-white/50 border-none rounded-2xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
                     />
+                    <div className="space-y-3">
+                      {choiceOptions.map((opt, i) => (
+                        <div key={i} className="bg-white/30 p-4 rounded-2xl space-y-2">
+                          <div className="flex gap-2">
+                            <input 
+                              type="text" 
+                              value={opt.emoji}
+                              onChange={(e) => {
+                                const newOpts = [...choiceOptions];
+                                newOpts[i].emoji = e.target.value;
+                                setChoiceOptions(newOpts);
+                              }}
+                              placeholder="Emoji"
+                              className="w-12 bg-white/50 border-none rounded-xl px-2 py-2 text-center text-sm outline-none"
+                            />
+                            <input 
+                              type="text" 
+                              value={opt.label}
+                              onChange={(e) => {
+                                const newOpts = [...choiceOptions];
+                                newOpts[i].label = e.target.value;
+                                setChoiceOptions(newOpts);
+                              }}
+                              placeholder="Option Label"
+                              className="flex-1 bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
+                            />
+                          </div>
+                          <input 
+                            type="text" 
+                            value={opt.response}
+                            onChange={(e) => {
+                              const newOpts = [...choiceOptions];
+                              newOpts[i].response = e.target.value;
+                              setChoiceOptions(newOpts);
+                            }}
+                            placeholder="Response Message"
+                            className="w-full bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <button 
+                      onClick={createChoiceMoment}
+                      className="w-full bg-primary hover:bg-primary/90 text-white py-3 rounded-2xl font-bold transition-colors active:scale-95"
+                    >
+                      ✨ Activate Moment
+                    </button>
                   </div>
-                ))}
+                )}
               </div>
-              <button 
-                onClick={createChoiceMoment}
-                className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/20"
-              >
-                Activate Moment
-              </button>
-            </div>
+            </motion.div>
           )}
-        </div>
-      </div>
+        </AnimatePresence>
+      </motion.div>
     </div>
   );
 }
