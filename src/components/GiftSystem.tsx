@@ -164,27 +164,45 @@ export default function GiftSystem({ totalStars }: GiftSystemProps) {
   return (
     <div className="space-y-3">
       <motion.div
-        whileHover={isUnlockable ? { scale: 1.01 } : {}}
-        whileTap={isUnlockable ? { scale: 0.99 } : {}}
+        whileHover={isUnlockable ? { scale: 1.05 } : {}}
+        whileTap={isUnlockable ? { scale: 0.98 } : {}}
         onClick={handleUnlock}
         className={cn(
           "relative glass rounded-2xl p-4 flex items-center gap-4 overflow-hidden transition-all duration-500",
-          isUnlockable ? "cursor-pointer border-primary/40 bg-white shadow-lg shadow-primary/5" : "opacity-80"
+          isUnlockable ? "cursor-pointer border-primary/60 bg-white shadow-2xl shadow-primary/20" : "opacity-80"
         )}
       >
         {isUnlockable && (
-          <motion.div
-            animate={{ opacity: [0.1, 0.3, 0.1] }}
-            transition={{ repeat: Infinity, duration: 2 }}
-            className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/20 to-transparent -skew-x-12 translate-x-[-100%] animate-[shimmer_2s_infinite]"
-          />
+          <>
+            {/* Animated outer glow */}
+            <motion.div
+              animate={{ opacity: [0.2, 0.5, 0.2], scale: [1, 1.1, 1] }}
+              transition={{ repeat: Infinity, duration: 2 }}
+              className="absolute inset-0 rounded-2xl bg-gradient-to-r from-primary/0 via-primary/30 to-primary/0 -skew-x-12"
+            />
+            {/* Shimmer effect */}
+            <motion.div
+              animate={{ opacity: [0.1, 0.3, 0.1] }}
+              transition={{ repeat: Infinity, duration: 2 }}
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/20 to-transparent -skew-x-12 translate-x-[-100%] animate-[shimmer_2s_infinite]"
+            />
+          </>
         )}
 
         <div className={cn(
-          "w-12 h-12 rounded-xl flex items-center justify-center shadow-md shrink-0",
-          isUnlockable ? "bg-primary text-white animate-pulse" : "bg-slate-100 text-slate-400"
+          "w-12 h-12 rounded-xl flex items-center justify-center shadow-lg shrink-0 relative",
+          isUnlockable ? "bg-gradient-to-br from-primary to-secondary text-white" : "bg-slate-100 text-slate-400"
         )}>
-          {isUnlockable ? <Gift className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
+          {isUnlockable && (
+            <motion.div
+              animate={{ scale: [1, 1.2, 1] }}
+              transition={{ repeat: Infinity, duration: 1.5 }}
+              className="absolute inset-0 bg-primary/20 rounded-xl blur-lg"
+            />
+          )}
+          <motion.div animate={isUnlockable ? { rotateY: [0, 360] } : {}} transition={{ repeat: Infinity, duration: 3 }} className="relative z-10">
+            {isUnlockable ? <Gift className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
+          </motion.div>
         </div>
 
         <div className="flex-1 min-w-0">
@@ -192,11 +210,18 @@ export default function GiftSystem({ totalStars }: GiftSystemProps) {
             {isUnlockable ? 'SURPRISE UNLOCKED!' : 'MYSTERY GIFT'}
           </div>
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
-            {isUnlockable ? 'Tap to open your gift' : `${25 - (totalStars % 25)} stars to next gift`}
+            {isUnlockable ? '✨ TAP TO OPEN YOUR GIFT ✨' : `${25 - (totalStars % 25)} stars to next gift`}
           </div>
         </div>
 
-        {isUnlockable && <ChevronRight className="w-5 h-5 text-primary shrink-0" />}
+        {isUnlockable && (
+          <motion.div
+            animate={{ x: [0, 6, 0] }}
+            transition={{ repeat: Infinity, duration: 1 }}
+          >
+            <ChevronRight className="w-5 h-5 text-primary shrink-0" />
+          </motion.div>
+        )}
       </motion.div>
 
       {/* Unlock Cinematic Modal */}
@@ -249,9 +274,9 @@ export default function GiftSystem({ totalStars }: GiftSystemProps) {
                     <motion.div
                       key={i}
                       animate={{
-                        scale: isSelected && revealPhase !== 'idle' ? 1.12 : isOther && revealPhase !== 'revealOthers' && revealPhase !== 'complete' ? 0.85 : 1,
-                        opacity: isOther && revealPhase !== 'revealOthers' && revealPhase !== 'complete' ? 0.25 : 1,
-                        y: isSelected && revealPhase !== 'idle' ? -30 : 0,
+                        scale: isSelected && revealPhase !== 'idle' ? 1.15 : isOther && revealPhase !== 'revealOthers' && revealPhase !== 'complete' ? 0.8 : 1,
+                        opacity: isOther && revealPhase !== 'revealOthers' && revealPhase !== 'complete' ? 0.2 : 1,
+                        y: isSelected && revealPhase !== 'idle' ? -50 : 0,
                         rotateY: isFlipped ? 180 : 0,
                         zIndex: isSelected ? 10 : 1
                       }}
@@ -263,13 +288,13 @@ export default function GiftSystem({ totalStars }: GiftSystemProps) {
                       style={{ transformStyle: 'preserve-3d' }}
                       className={cn(
                         "relative aspect-[2/3] cursor-pointer transition-all",
-                        !isLocked && revealPhase === 'idle' ? 'cursor-pointer hover:scale-105' : 'cursor-not-allowed'
+                        !isLocked && revealPhase === 'idle' ? 'cursor-pointer hover:scale-110' : 'cursor-not-allowed'
                       )}
                       onClick={() => !isLocked && revealPhase === 'idle' && handleSelect(i)}
                     >
                       {/* CARD FRONT (Mystery) */}
                       <div 
-                        className="absolute inset-0 glass rounded-3xl flex flex-col items-center justify-center gap-4 border-2 border-white/20 backface-hidden shadow-2xl"
+                        className="absolute inset-0 glass rounded-3xl flex flex-col items-center justify-center gap-4 border-2 border-white/20 backface-hidden shadow-2xl backdrop-blur-md"
                         style={{ backfaceVisibility: 'hidden' }}
                       >
                         {/* Glow pulse */}
@@ -280,9 +305,29 @@ export default function GiftSystem({ totalStars }: GiftSystemProps) {
                         />
                         
                         <div className="w-14 h-14 bg-white/10 rounded-full flex items-center justify-center relative z-10 border border-white/20">
-                          <Heart className="w-7 h-7 text-white/60" />
+                          <motion.div
+                            animate={{ scale: [1, 1.1, 1] }}
+                            transition={{ duration: 1.5, repeat: Infinity }}
+                          >
+                            <Heart className="w-7 h-7 text-white/60" />
+                          </motion.div>
                         </div>
-                        <div className="text-white font-black text-5xl opacity-20 relative z-10">?</div>
+                        <motion.div 
+                          animate={{ scale: [1, 1.2, 1], opacity: [0.4, 0.8, 0.4] }}
+                          transition={{ duration: 2, repeat: Infinity }}
+                          className="text-white font-black text-5xl opacity-20 relative z-10"
+                        >
+                          ?
+                        </motion.div>
+                        {revealPhase === 'idle' && (
+                          <motion.p
+                            animate={{ opacity: [0.5, 1, 0.5] }}
+                            transition={{ duration: 1, repeat: Infinity }}
+                            className="text-white/70 text-xs font-bold uppercase tracking-widest absolute bottom-6"
+                          >
+                            Tap to reveal
+                          </motion.p>
+                        )}
                       </div>
 
                       {/* CARD BACK (Revealed) */}
@@ -290,7 +335,7 @@ export default function GiftSystem({ totalStars }: GiftSystemProps) {
                         className={cn(
                           "absolute inset-0 rounded-3xl flex flex-col items-center justify-start p-5 border-2 overflow-hidden shadow-2xl",
                           isSelected 
-                            ? "bg-white border-white shadow-[0_0_60px_rgba(255,77,109,0.4)]" 
+                            ? "bg-gradient-to-br from-white via-white to-primary/5 border-white shadow-[0_0_80px_rgba(255,77,109,0.5)]" 
                             : "bg-white/15 border-white/30 backdrop-blur-sm"
                         )}
                         style={{ 
@@ -380,50 +425,82 @@ export default function GiftSystem({ totalStars }: GiftSystemProps) {
                   >
                     {/* ANIMATED CELEBRATION TEXT */}
                     <motion.div
-                      initial={{ scale: 0.5, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 1.2, opacity: 0 }}
-                      transition={{ duration: 0.6, ease: 'easeOut' }}
-                      className="text-center"
+                      initial={{ scale: 0.5, opacity: 0, y: 30 }}
+                      animate={{ scale: 1, opacity: 1, y: 0 }}
+                      exit={{ scale: 1.2, opacity: 0, y: -30 }}
+                      transition={{ duration: 0.8, ease: 'easeOut', type: 'spring', stiffness: 100 }}
+                      className="text-center relative"
                     >
-                      {/* Glowing background circle */}
+                      {/* Multiple glowing layers */}
                       <motion.div
                         animate={{ 
-                          scale: [1, 1.2, 1],
-                          opacity: [0.3, 0.5, 0.3]
+                          scale: [0.8, 1.4, 0.8],
+                          opacity: [0.3, 0.1, 0.3]
                         }}
                         transition={{ duration: 2, repeat: Infinity }}
-                        className="absolute inset-0 bg-white/10 blur-3xl rounded-full -z-10"
+                        className="absolute inset-0 bg-gradient-to-t from-primary/60 via-primary/40 to-primary/20 blur-3xl rounded-full -z-10 w-96 h-96 -translate-x-24"
+                      />
+                      <motion.div
+                        animate={{ 
+                          scale: [1, 1.3, 1],
+                          opacity: [0.2, 0.4, 0.2]
+                        }}
+                        transition={{ duration: 2.5, repeat: Infinity, delay: 0.5 }}
+                        className="absolute inset-0 bg-gradient-to-b from-white/20 via-primary/10 to-transparent blur-2xl rounded-full -z-10 w-80 h-80"
                       />
 
                       <motion.h2
                         animate={{ 
-                          scale: [1, 1.05, 1],
+                          scale: [1, 1.08, 1],
                           textShadow: [
                             '0 0 0px rgba(255,77,109,0)',
-                            '0 0 30px rgba(255,77,109,0.5)',
-                            '0 0 0px rgba(255,77,109,0)'
-                          ]
+                            '0 0 50px rgba(255,77,109,0.8)',
+                            '0 0 20px rgba(255,77,109,0.4)'
+                          ],
+                          letterSpacing: ['0.05em', '0.08em', '0.05em']
                         }}
                         transition={{ duration: 2, repeat: Infinity }}
-                        className="text-5xl md:text-6xl font-black text-white tracking-tighter mb-6 drop-shadow-2xl"
+                        className="text-6xl md:text-7xl font-black text-white tracking-tight mb-6 drop-shadow-2xl leading-tight"
                       >
-                        Congratulations Darloo 💖
+                        CONGRATULATIONS
                       </motion.h2>
 
                       <motion.p
-                        animate={{ opacity: [0.8, 1, 0.8] }}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.3, duration: 0.8 }}
+                        className="text-3xl md:text-4xl font-black text-primary uppercase tracking-[0.2em] drop-shadow-xl mb-4"
+                      >
+                        DARLOO 💖
+                      </motion.p>
+
+                      <motion.p
+                        animate={{ opacity: [0.7, 1, 0.7] }}
                         transition={{ duration: 1.5, repeat: Infinity }}
-                        className="text-2xl md:text-3xl font-black text-primary uppercase tracking-[0.4em] drop-shadow-lg"
+                        className="text-2xl md:text-3xl font-black text-white uppercase tracking-[0.4em] drop-shadow-lg mb-2"
                       >
                         YOU WON
                       </motion.p>
 
                       <motion.p
-                        className="text-xl md:text-2xl font-bold text-white uppercase tracking-wider mt-4 drop-shadow-lg"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.5, duration: 0.8 }}
+                        className="text-xl md:text-2xl font-bold text-primary/90 uppercase tracking-wider mt-4 drop-shadow-lg italic"
                       >
                         {selectedOption === 1 ? activeGiftSet.option1.title : selectedOption === 2 ? activeGiftSet.option2.title : activeGiftSet.option3.title}
                       </motion.p>
+
+                      {/* Tap to continue prompt */}
+                      {revealPhase === 'revealing' && (
+                        <motion.div
+                          animate={{ scale: [0.95, 1.05, 0.95], opacity: [0.6, 1, 0.6] }}
+                          transition={{ duration: 1.5, repeat: Infinity }}
+                          className="absolute -bottom-12 left-1/2 transform -translate-x-1/2 text-white/80 font-bold uppercase text-sm tracking-widest"
+                        >
+                          ✨ Gift Ready to Open ✨
+                        </motion.div>
+                      )}
                     </motion.div>
                   </motion.div>
                 )}
