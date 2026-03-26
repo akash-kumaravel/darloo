@@ -39,34 +39,33 @@ import { Smile, Heart as HeartIcon, Frown, Moon, Sparkles } from 'lucide-react';
 interface AdminPanelProps {
   stats: GameStats | null;
   profile: UserProfile | null;
+  onNavigateToGifts?: () => void;
 }
 
 interface EventItem extends NextEvent {
   id?: string;
 }
 
-export default function AdminPanel({ stats, profile }: AdminPanelProps) {
+interface GiftSetItem {
+  id: string;
+  option1: { title: string; message: string; image: string };
+  option2: { title: string; message: string; image: string };
+  option3: { title: string; message: string; image: string };
+  unlocked: boolean;
+  primary?: boolean;
+  createdAt: string;
+}
+
+export default function AdminPanel({ stats, profile, onNavigateToGifts }: AdminPanelProps) {
   const [dailyMsg, setDailyMsg] = useState('');
   const [eventName, setEventName] = useState('');
   const [eventDate, setEventDate] = useState('');
-  const [memoryCaption, setMemoryCaption] = useState('');
-  const [memoryImage, setMemoryImage] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [showGiftForm, setShowGiftForm] = useState(false);
   const [userMoods, setUserMoods] = useState<UserMood[]>([]);
   const [choiceResponses, setChoiceResponses] = useState<ChoiceResponse[]>([]);
-  const [showChoiceForm, setShowChoiceForm] = useState(false);
   const [events, setEvents] = useState<EventItem[]>([]);
-  const [starAdjustment, setStarAdjustment] = useState(0);
   const [expandedSection, setExpandedSection] = useState<string>('');
-
-  // Choice Moment Form State
-  const [choiceQuestion, setChoiceQuestion] = useState('');
-  const [choiceOptions, setChoiceOptions] = useState([
-    { label: '', emoji: '🎬', response: '', reward: 5 },
-    { label: '', emoji: '🌆', response: '', reward: 5 },
-    { label: '', emoji: '🏡', response: '', reward: 5 },
-  ]);
+  const [giftSets, setGiftSets] = useState<GiftSetItem[]>([]);
+  const [primaryGiftId, setPrimaryGiftId] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribeMoods = onSnapshot(collection(db, 'moods'), (snap) => {
@@ -93,10 +92,24 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
       }
     );
 
+    const unsubscribeGifts = onSnapshot(
+      collection(db, 'giftSets'),
+      (snap) => {
+        const gifts = snap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as GiftSetItem));
+        setGiftSets(gifts);
+        const primary = gifts.find(g => g.primary);
+        setPrimaryGiftId(primary?.id || null);
+      }
+    );
+
     return () => {
       unsubscribeMoods();
       unsubscribeResponses();
       unsubscribeEvents();
+      unsubscribeGifts();
     };
   }, []);
   const [giftOptions, setGiftOptions] = useState([
@@ -142,6 +155,21 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'events');
       toast.error('Failed to delete event');
+    }
+  };
+
+  const setPrimaryGift = async (giftId: string) => {
+    try {
+      // Remove primary from all gifts
+      await Promise.all(
+        giftSets.map(gift =>
+          updateDoc(doc(db, 'giftSets', gift.id), { primary: gift.id === giftId })
+        )
+      );
+      toast.success('Primary gift set! 🎁');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'giftSets');
+      toast.error('Failed to set primary gift');
     }
   };
 
@@ -333,118 +361,118 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   };
 
   return (
-    <div className="space-y-4 pb-6">
-      {/* ADMIN HEADER */}
+    <div className="space-y-3 pb-6">
+      {/* HEADER */}
       <motion.div
-        initial={{ opacity: 0, y: -20 }}
+        initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-gradient-to-r from-primary to-secondary text-white rounded-3xl p-6"
+        className="bg-gradient-to-r from-primary to-secondary text-white rounded-2xl p-5"
       >
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-black tracking-tighter">⚡ ADMIN</h1>
-            <p className="text-xs text-white/80 font-bold">Control Center</p>
+            <h1 className="text-2xl font-black">⚡ ADMIN</h1>
+            <p className="text-xs text-white/70 font-bold">Control Center</p>
           </div>
-          <Settings className="w-8 h-8" />
+          <Settings className="w-7 h-7" />
         </div>
       </motion.div>
 
-      {/* STAR CONTROL - Always Visible */}
+      {/* STARS SECTION */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.1 }}
-        className="glass rounded-3xl p-5"
+        transition={{ delay: 0.05 }}
+        className="glass rounded-2xl p-4"
       >
-        <div className="flex items-center justify-between mb-4">
-          <div className="font-bold text-primary text-sm">STARS: <span className="text-2xl">{stats?.totalStars || 0}⭐</span></div>
+        <div className="flex items-center justify-between mb-3">
+          <label className="text-xs font-bold text-primary uppercase">Stars</label>
+          <div className="text-2xl font-black text-primary">{stats?.totalStars || 0}⭐</div>
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-4 gap-2">
           <button
             onClick={() => adjustStars(-5)}
-            className="bg-red-500/20 hover:bg-red-500/40 text-red-600 font-bold py-2 rounded-xl text-xs transition-colors active:scale-95"
+            className="bg-red-500/20 hover:bg-red-500/40 text-red-600 font-bold py-2 rounded-lg text-xs transition-colors active:scale-95"
           >
             -5
           </button>
           <button
-            onClick={() => adjustStars(5)}
-            className="bg-green-500/20 hover:bg-green-500/40 text-green-600 font-bold py-2 rounded-xl text-xs transition-colors active:scale-95"
-          >
-            +5
-          </button>
-          <button
             onClick={() => adjustStars(-1)}
-            className="bg-orange-500/20 hover:bg-orange-500/40 text-orange-600 font-bold py-2 rounded-xl text-xs transition-colors active:scale-95"
+            className="bg-orange-500/20 hover:bg-orange-500/40 text-orange-600 font-bold py-2 rounded-lg text-xs transition-colors active:scale-95"
           >
             -1
           </button>
           <button
+            onClick={() => adjustStars(5)}
+            className="bg-green-500/20 hover:bg-green-500/40 text-green-600 font-bold py-2 rounded-lg text-xs transition-colors active:scale-95"
+          >
+            +5
+          </button>
+          <button
             onClick={() => adjustStars(25)}
-            className="bg-primary/20 hover:bg-primary/40 text-primary font-bold py-2 rounded-xl text-xs transition-colors active:scale-95"
+            className="bg-primary/20 hover:bg-primary/40 text-primary font-bold py-2 rounded-lg text-xs transition-colors active:scale-95"
           >
             +25
           </button>
         </div>
       </motion.div>
 
-      {/* DAILY MESSAGE */}
+      {/* DAILY MESSAGE SECTION */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.15 }}
-        className="glass rounded-3xl p-5"
+        transition={{ delay: 0.1 }}
+        className="glass rounded-2xl p-4"
       >
-        <label className="block text-xs font-bold text-primary mb-2 uppercase">Daily Message</label>
+        <label className="text-xs font-bold text-primary mb-2 uppercase block">Daily Message 💌</label>
         <input 
           type="text" 
           value={dailyMsg}
           onChange={(e) => setDailyMsg(e.target.value)}
           placeholder="Type a message..."
-          maxLength={150}
-          className="w-full bg-white/50 border-none rounded-xl px-3 py-2 text-sm font-medium mb-2 focus:ring-2 ring-primary outline-none"
+          maxLength={100}
+          className="w-full bg-white/50 border-none rounded-lg px-3 py-2 text-xs font-medium mb-2 focus:ring-2 ring-primary outline-none"
         />
         <button 
           onClick={updateDailyMessage}
-          className="w-full bg-primary hover:bg-primary/90 text-white py-2 rounded-xl font-bold text-xs transition-colors active:scale-95"
+          className="w-full bg-primary hover:bg-primary/90 text-white py-2 rounded-lg font-bold text-xs transition-colors active:scale-95"
         >
-          Send Message 💌
+          Send
         </button>
       </motion.div>
 
-      {/* EVENTS SECTION - No Dropdown */}
+      {/* EVENTS SECTION */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.2 }}
-        className="glass rounded-3xl p-5"
+        transition={{ delay: 0.15 }}
+        className="glass rounded-2xl p-4"
       >
-        <label className="block text-xs font-bold text-primary mb-3 uppercase">Events</label>
+        <label className="text-xs font-bold text-primary mb-3 uppercase block">Events 📅</label>
         
-        {/* Create Event Form */}
-        <div className="space-y-2 mb-4 pb-4 border-b border-white/10">
+        <div className="space-y-2 mb-3">
           <input 
             type="text" 
             value={eventName}
             onChange={(e) => setEventName(e.target.value)}
             placeholder="Event name"
-            className="w-full bg-white/50 border-none rounded-xl px-3 py-2 text-xs focus:ring-2 ring-primary outline-none"
+            className="w-full bg-white/50 border-none rounded-lg px-3 py-2 text-xs focus:ring-2 ring-primary outline-none"
           />
           <input 
             type="datetime-local" 
             value={eventDate}
             onChange={(e) => setEventDate(e.target.value)}
-            className="w-full bg-white/50 border-none rounded-xl px-3 py-2 text-xs focus:ring-2 ring-primary outline-none"
+            className="w-full bg-white/50 border-none rounded-lg px-3 py-2 text-xs focus:ring-2 ring-primary outline-none"
           />
           <button 
             onClick={updateNextEvent}
-            className="w-full bg-primary hover:bg-primary/90 text-white py-2 rounded-xl font-bold text-xs transition-colors active:scale-95"
+            className="w-full bg-primary hover:bg-primary/90 text-white py-2 rounded-lg font-bold text-xs transition-colors active:scale-95"
           >
-            Add Event 📅
+            Add Event
           </button>
         </div>
 
         {/* Events List */}
-        <div className="space-y-2 max-h-48 overflow-y-auto">
+        <div className="space-y-2 max-h-40 overflow-y-auto">
           {events.length === 0 ? (
             <p className="text-xs text-slate-400 italic py-2">No events</p>
           ) : (
@@ -453,7 +481,7 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
                 key={evt.id}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="flex items-center justify-between bg-white/30 p-3 rounded-xl group hover:bg-white/40 transition-colors"
+                className="flex items-center justify-between bg-white/30 p-2 rounded-lg group hover:bg-white/40 transition-colors"
               >
                 <div className="flex-1 min-w-0">
                   <div className="font-bold text-slate-800 text-xs truncate">{evt.nextEvent}</div>
@@ -461,7 +489,7 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
                 </div>
                 <button
                   onClick={() => evt.id && deleteEvent(evt.id)}
-                  className="ml-2 p-1 bg-red-500/20 hover:bg-red-500/40 text-red-600 rounded-lg transition-all"
+                  className="ml-2 px-2 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-600 rounded text-xs transition-all"
                 >
                   🗑️
                 </button>
@@ -471,75 +499,52 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
         </div>
       </motion.div>
 
-      {/* GIFT SETS */}
-      <motion.div
+      {/* PRIMARY GIFT DISPLAY */}
+      {giftSets.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          className="glass rounded-2xl p-4 border-2 border-primary/30"
+        >
+          <label className="text-xs font-bold text-primary mb-3 uppercase block">⭐ Primary Gift</label>
+          <div className="space-y-2">
+            {giftSets.map((gift) => (
+              <motion.button
+                key={gift.id}
+                onClick={() => setPrimaryGift(gift.id)}
+                whileTap={{ scale: 0.98 }}
+                className={cn(
+                  "w-full p-3 rounded-lg text-left transition-all text-xs font-bold",
+                  primaryGiftId === gift.id
+                    ? "bg-primary/30 border-2 border-primary text-primary"
+                    : "bg-white/20 border-2 border-transparent hover:bg-white/30"
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div>{gift.option1.title}</div>
+                    <div className="text-[10px] opacity-70">Set on {new Date(gift.createdAt).toLocaleDateString()}</div>
+                  </div>
+                  {primaryGiftId === gift.id && <div className="text-lg">✓</div>}
+                </div>
+              </motion.button>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
+      {/* GIFT MANAGEMENT LINK */}
+      <motion.button
+        onClick={onNavigateToGifts}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.25 }}
-        className="glass rounded-3xl p-5"
+        className="w-full glass rounded-2xl p-4 text-primary font-bold text-sm active:scale-95 transition-transform flex items-center justify-between hover:bg-white/5"
       >
-        <label className="block text-xs font-bold text-primary mb-3 uppercase">Create Gift Set</label>
-        <button 
-          onClick={() => setShowGiftForm(!showGiftForm)}
-          className="w-full bg-primary hover:bg-primary/90 text-white py-2 rounded-xl font-bold text-xs transition-colors active:scale-95"
-        >
-          {showGiftForm ? '✕ CLOSE' : '+ NEW GIFT PACK'}
-        </button>
-
-        {showGiftForm && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            className="mt-4 space-y-3 border-t border-white/10 pt-4"
-          >
-            {giftOptions.map((opt, i) => (
-              <div key={i} className="space-y-2 pb-3 border-b border-white/10">
-                <input 
-                  type="text"
-                  value={opt.title}
-                  onChange={(e) => {
-                    const updated = [...giftOptions];
-                    updated[i].title = e.target.value;
-                    setGiftOptions(updated);
-                  }}
-                  placeholder={`Gift ${i + 1} Title`}
-                  className="w-full bg-white/50 border-none rounded-lg px-3 py-2 text-xs focus:ring-2 ring-primary outline-none"
-                />
-                <textarea
-                  value={opt.message}
-                  onChange={(e) => {
-                    const updated = [...giftOptions];
-                    updated[i].message = e.target.value;
-                    setGiftOptions(updated);
-                  }}
-                  placeholder="Message"
-                  rows={2}
-                  className="w-full bg-white/50 border-none rounded-lg px-3 py-2 text-xs focus:ring-2 ring-primary outline-none resize-none"
-                />
-                <label className="block text-xs text-slate-500">
-                  <input 
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                      const updated = [...giftOptions];
-                      updated[i].image = e.target.files?.[0] || null;
-                      setGiftOptions(updated);
-                    }}
-                    className="w-full text-xs"
-                  />
-                </label>
-              </div>
-            ))}
-            <button 
-              onClick={createGiftSet}
-              disabled={isUploading}
-              className="w-full bg-primary hover:bg-primary/90 text-white py-2 rounded-xl font-bold text-xs transition-colors disabled:opacity-50 active:scale-95"
-            >
-              {isUploading ? 'Creating...' : 'Create Gift Pack 🎁'}
-            </button>
-          </motion.div>
-        )}
-      </motion.div>
+        <span>🎁 Manage Gifts</span>
+        <ChevronRight className="w-4 h-4" />
+      </motion.button>
     </div>
   );
 }

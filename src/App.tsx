@@ -37,6 +37,7 @@ import { handleFirestoreError, OperationType } from './lib/firestore-error';
 import AdminPanel from './components/AdminPanel';
 import UserPanel from './components/UserPanel';
 import GiftSystem from './components/GiftSystem';
+import GiftManagement from './components/GiftManagement';
 import Scrapbook from './components/Scrapbook';
 import MemoryVault from './components/MemoryVault';
 import Navigation from './components/Navigation';
@@ -249,10 +250,22 @@ export default function App() {
               className="p-6"
             >
               {isAdminMode ? (
-                <AdminPanel stats={stats} profile={profile} />
+                <AdminPanel stats={stats} profile={profile} onNavigateToGifts={() => setActiveTab('admin-gifts')} />
               ) : (
                 <UserPanel stats={stats} profile={profile} />
               )}
+            </motion.div>
+          )}
+
+          {activeTab === 'admin-gifts' && isAdminMode && (
+            <motion.div
+              key="admin-gifts"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="p-6"
+            >
+              <GiftManagement />
             </motion.div>
           )}
 

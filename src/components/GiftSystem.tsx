@@ -55,6 +55,7 @@ export default function GiftSystem({ totalStars }: GiftSystemProps) {
   useEffect(() => {
     const q = query(
       collection(db, 'giftSets'), 
+      where('primary', '==', true),
       where('unlocked', '==', false),
       orderBy('createdAt', 'desc'),
       limit(1)
