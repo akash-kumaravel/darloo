@@ -12,12 +12,25 @@ interface StarReactorProps {
   totalStars: number;
   isAdmin: boolean;
   cooldown?: number;
+  onGiftOpen?: () => void;
 }
 
-export default function StarReactor({ totalStars, isAdmin, cooldown = 500 }: StarReactorProps) {
+export default function StarReactor({ totalStars, isAdmin, cooldown = 500, onGiftOpen }: StarReactorProps) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [lastClick, setLastClick] = useState(0);
   const [floatingHearts, setFloatingHearts] = useState<{ id: number; x: number; y: number }[]>([]);
+
+  // Calculate stars in current cycle (0-24 = collecting; cycle complete when 0 and totalStars > 0)
+  const starsInCycle = totalStars % 25;
+  const [giftOpenedThisCycle, setGiftOpenedThisCycle] = useState(false);
+  const isGiftReadyToOpen = starsInCycle === 0 && totalStars > 0 && !giftOpenedThisCycle;
+  const currentGiftNumber = Math.floor(totalStars / 25);
+
+  React.useEffect(() => {
+    if (starsInCycle !== 0) {
+      setGiftOpenedThisCycle(false);
+    }
+  }, [starsInCycle]);
 
   const handleGiveStar = async () => {
     if (!isAdmin) return;
@@ -25,6 +38,14 @@ export default function StarReactor({ totalStars, isAdmin, cooldown = 500 }: Sta
     const now = Date.now();
     if (now - lastClick < cooldown) {
       toast.error('Wait a moment... ❤️');
+      return;
+    }
+
+    // Gift open mode when exactly on 25-cycle and not opened yet
+    if (isGiftReadyToOpen) {
+      onGiftOpen?.();
+      setGiftOpenedThisCycle(true);
+      toast.success(`Gift #${currentGiftNumber} opening! 🎁`);
       return;
     }
 
@@ -85,8 +106,8 @@ export default function StarReactor({ totalStars, isAdmin, cooldown = 500 }: Sta
         className="relative cursor-pointer"
         onClick={handleGiveStar}
       >
-        {/* GIFT UNLOCK ANIMATIONS - Only reveal when 25+ stars */}
-        {totalStars >= 25 ? (
+        {/* GIFT UNLOCK ANIMATIONS - Only reveal when gift is ready (every 25 stars) */}
+        {isGiftReadyToOpen && (
           <>
             {/* Pulsing gift box glow - animated reveal effect */}
             <motion.div 
@@ -107,16 +128,16 @@ export default function StarReactor({ totalStars, isAdmin, cooldown = 500 }: Sta
               className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent blur-xl rounded-full"
             />
           </>
-        ) : null}
+        )}
 
         <div className={cn(
           "relative glass p-8 rounded-full shadow-2xl border-4 transition-all duration-500",
-          totalStars >= 25 
+          isGiftReadyToOpen 
             ? "border-primary shadow-[0_0_60px_rgba(255,77,109,0.6)]" 
             : "border-white"
         )}>
-          {totalStars >= 25 ? (
-            /* GIFT BOX - Reveals at 25+ stars with animated rotation */
+          {isGiftReadyToOpen ? (
+            /* GIFT BOX - Ready when stars % 25 == 0 */
             <motion.div
               animate={{ rotateY: [0, 360] }}
               transition={{ repeat: Infinity, duration: 4 }}
@@ -127,7 +148,7 @@ export default function StarReactor({ totalStars, isAdmin, cooldown = 500 }: Sta
               />
             </motion.div>
           ) : (
-            /* STAR - Shows before 25 stars */
+            /* STAR - Shows while collecting stars (1-24 in cycle) */
             <Star 
               className={cn(
                 "w-24 h-24 transition-all duration-500",
@@ -142,12 +163,12 @@ export default function StarReactor({ totalStars, isAdmin, cooldown = 500 }: Sta
             transition={{ repeat: Infinity, duration: 2 }}
             className={cn(
               "absolute -top-2 -right-2 text-xs font-bold px-3 py-1 rounded-full shadow-lg",
-              totalStars >= 25
+              isGiftReadyToOpen
                 ? "bg-gradient-to-r from-primary to-secondary text-white"
                 : "bg-primary text-white"
             )}
           >
-            {totalStars >= 25 ? `🎁 GIFT!` : `LVL ${Math.floor(totalStars / 10) + 1}`}
+            {isGiftReadyToOpen ? `🎁 GIFT #${currentGiftNumber}!` : `LVL ${Math.floor(totalStars / 10) + 1}`}
           </motion.div>
         </div>
       </motion.div>
@@ -169,12 +190,19 @@ export default function StarReactor({ totalStars, isAdmin, cooldown = 500 }: Sta
       <div className="w-full max-w-xs mt-8 h-3 bg-white/50 rounded-full overflow-hidden shadow-inner p-0.5">
         <motion.div
           initial={{ width: 0 }}
-          animate={{ width: `${(totalStars % 25) * 4}%` }}
-          className="h-full bg-gradient-to-r from-primary to-secondary rounded-full shadow-lg"
+          animate={{ width: isGiftReadyToOpen ? "100%" : `${(starsInCycle * 4)}%` }}
+          className={cn(
+            "h-full rounded-full shadow-lg transition-all duration-300",
+            isGiftReadyToOpen
+              ? "bg-gradient-to-r from-primary to-secondary"
+              : "bg-gradient-to-r from-primary to-secondary"
+          )}
         />
       </div>
       <div className="mt-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-        {25 - (totalStars % 25)} stars until next gift
+        {isGiftReadyToOpen 
+          ? `🎁 GIFT #${currentGiftNumber} READY! CLICK THE BOX` 
+          : `${25 - starsInCycle} stars until gift #${currentGiftNumber + 1}`}
       </div>
     </div>
   );

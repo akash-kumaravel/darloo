@@ -76,6 +76,8 @@ export default function UserPanel({ stats, profile }: UserPanelProps) {
     return () => clearInterval(interval);
   }, [nextEvent]);
 
+  const [giftOpenRequested, setGiftOpenRequested] = useState(false);
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -121,7 +123,11 @@ export default function UserPanel({ stats, profile }: UserPanelProps) {
       </AnimatePresence>
 
       {/* Star Reactor */}
-      <StarReactor totalStars={stats?.totalStars || 0} isAdmin={false} />
+      <StarReactor
+        totalStars={stats?.totalStars || 0}
+        isAdmin={false}
+        onGiftOpen={() => setGiftOpenRequested(true)}
+      />
 
       {/* Mood Engine */}
       <MoodEngine />
@@ -130,7 +136,11 @@ export default function UserPanel({ stats, profile }: UserPanelProps) {
       <ChoiceMoments />
 
       {/* Gift System */}
-      <GiftSystem totalStars={stats?.totalStars || 0} />
+      <GiftSystem
+        totalStars={stats?.totalStars || 0}
+        giftOpenRequest={giftOpenRequested}
+        onGiftOpened={() => setGiftOpenRequested(false)}
+      />
 
       {/* Next Event & Memory */}
       <div className="grid grid-cols-2 gap-4">

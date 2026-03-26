@@ -21,6 +21,8 @@ import { handleFirestoreError, OperationType } from '../lib/firestore-error';
 
 interface GiftSystemProps {
   totalStars: number;
+  giftOpenRequest?: boolean;
+  onGiftOpened?: () => void;
 }
 
 type RevealPhase = 'idle' | 'flipping' | 'won' | 'revealing' | 'revealOthers' | 'complete';
@@ -52,6 +54,10 @@ export default function GiftSystem({ totalStars }: GiftSystemProps) {
   const [revealPhase, setRevealPhase] = useState<RevealPhase>('idle');
   const [isLocked, setIsLocked] = useState(false);
 
+  // Calculate if gift is ready (every 25 stars: 25, 50, 75, etc.)
+  const starsInCycle = totalStars % 25;
+  const isGiftReady = starsInCycle === 0 && totalStars > 0;
+
   useEffect(() => {
     const q = query(
       collection(db, 'giftSets'), 
@@ -75,7 +81,14 @@ export default function GiftSystem({ totalStars }: GiftSystemProps) {
     return () => unsubscribe();
   }, []);
 
-  const isUnlockable = totalStars >= 25 && activeGiftSet;
+  const isUnlockable = isGiftReady && activeGiftSet;
+
+  useEffect(() => {
+    if (giftOpenRequest && isUnlockable && !showUnlock) {
+      handleUnlock();
+      onGiftOpened?.();
+    }
+  }, [giftOpenRequest, isUnlockable, showUnlock, onGiftOpened]);
 
   const handleUnlock = () => {
     if (!isUnlockable) return;
@@ -157,9 +170,10 @@ export default function GiftSystem({ totalStars }: GiftSystemProps) {
     setSelectedOption(null);
     setRevealPhase('idle');
     setIsLocked(false);
+    onGiftOpened?.();
   };
 
-  if (!activeGiftSet && totalStars < 25) return null;
+  if (!activeGiftSet && !isGiftReady) return null;
 
   return (
     <div className="space-y-3">
@@ -210,7 +224,7 @@ export default function GiftSystem({ totalStars }: GiftSystemProps) {
             {isUnlockable ? 'SURPRISE UNLOCKED!' : 'MYSTERY GIFT'}
           </div>
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
-            {isUnlockable ? '✨ TAP TO OPEN YOUR GIFT ✨' : `${25 - (totalStars % 25)} stars to next gift`}
+            {isUnlockable ? '✨ TAP TO OPEN YOUR GIFT ✨' : `${25 - starsInCycle} stars to next gift`}
           </div>
         </div>
 
