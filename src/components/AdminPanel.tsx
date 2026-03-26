@@ -31,6 +31,7 @@ import { toast } from 'sonner';
 import StarReactor from './StarReactor';
 import { handleFirestoreError, OperationType } from '../lib/firestore-error';
 import { Smile, Heart as HeartIcon, Frown, Moon, Sparkles } from 'lucide-react';
+import { sanitizeFileName, validateImageFile } from '../lib/utils';
 
 interface AdminPanelProps {
   stats: GameStats | null;
@@ -123,18 +124,22 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   };
 
   const uploadMemory = async () => {
-    if (!memoryImage || !memoryCaption) return;
+    if (!memoryImage || !memoryCaption) {
+      toast.error('Please select an image and add a caption');
+      return;
+    }
     
-    // Check file size (limit to 5MB)
-    if (memoryImage.size > 5 * 1024 * 1024) {
-      toast.error('Image is too large (max 5MB)');
+    const validation = validateImageFile(memoryImage, 5);
+    if (!validation.valid) {
+      toast.error(validation.error || 'Invalid image');
       return;
     }
 
     setIsUploading(true);
     console.log('Starting memory upload...', memoryImage.name);
     try {
-      const storageRef = ref(storage, `memories/${Date.now()}_${memoryImage.name}`);
+      const sanitizedName = sanitizeFileName(memoryImage.name);
+      const storageRef = ref(storage, `memories/${Date.now()}_${sanitizedName}`);
       console.log('Storage ref created:', storageRef.fullPath);
       
       const uploadTask = uploadBytesResumable(storageRef, memoryImage);
@@ -171,7 +176,8 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
       setMemoryImage(null);
     } catch (error) {
       console.error('Upload error details:', error);
-      toast.error('Upload failed. Check console for details.');
+      const errorMsg = error instanceof Error ? error.message : 'Upload failed';
+      toast.error(errorMsg.includes('permission') ? 'Permission denied. Make sure you are logged in.' : `Upload failed: ${errorMsg}`);
       handleFirestoreError(error, OperationType.CREATE, 'memories');
     } finally {
       setIsUploading(false);
@@ -182,9 +188,12 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   const createGiftSet = async () => {
     // Check all images first
     for (const opt of giftOptions) {
-      if (opt.image && opt.image.size > 5 * 1024 * 1024) {
-        toast.error(`Image for ${opt.title || 'gift'} is too large (max 5MB)`);
-        return;
+      if (opt.image) {
+        const validation = validateImageFile(opt.image, 5);
+        if (!validation.valid) {
+          toast.error(validation.error || `Invalid image for ${opt.title || 'gift'}`);
+          return;
+        }
       }
     }
 
@@ -195,7 +204,8 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
         let url = `https://picsum.photos/seed/gift${i}/400/400`;
         if (opt.image) {
           console.log(`Uploading gift image ${i + 1}:`, opt.image.name);
-          const storageRef = ref(storage, `gifts/${Date.now()}_${opt.image.name}`);
+          const sanitizedName = sanitizeFileName(opt.image.name);
+          const storageRef = ref(storage, `gifts/${Date.now()}_${sanitizedName}`);
           
           const uploadTask = uploadBytesResumable(storageRef, opt.image);
 

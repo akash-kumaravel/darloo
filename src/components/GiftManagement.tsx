@@ -15,7 +15,7 @@ import { db, storage } from '../firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { toast } from 'sonner';
 import { handleFirestoreError, OperationType } from '../lib/firestore-error';
-import { cn } from '../lib/utils';
+import { cn, sanitizeFileName, validateImageFile } from '../lib/utils';
 
 interface GiftSetItem {
   id: string;
@@ -61,9 +61,12 @@ export default function GiftManagement() {
         toast.error('Fill in title and message for all 3 gifts');
         return;
       }
-      if (opt.image && opt.image.size > 5 * 1024 * 1024) {
-        toast.error(`Image is too large (max 5MB)`);
-        return;
+      if (opt.image) {
+        const validation = validateImageFile(opt.image, 5);
+        if (!validation.valid) {
+          toast.error(validation.error || 'Invalid image');
+          return;
+        }
       }
     }
 
@@ -72,7 +75,8 @@ export default function GiftManagement() {
       const uploadedOptions = await Promise.all(giftOptions.map(async (opt, i) => {
         let url = `https://picsum.photos/seed/gift${i}/400/400`;
         if (opt.image) {
-          const storageRef = ref(storage, `gifts/${Date.now()}_${opt.image.name}`);
+          const sanitizedName = sanitizeFileName(opt.image.name);
+          const storageRef = ref(storage, `gifts/${Date.now()}_${sanitizedName}`);
           
           const uploadTask = uploadBytesResumable(storageRef, opt.image);
 

@@ -182,8 +182,8 @@ export default function GiftSystem({ totalStars, giftOpenRequest = false, onGift
         whileTap={isUnlockable ? { scale: 0.98 } : {}}
         onClick={handleUnlock}
         className={cn(
-          "relative glass rounded-2xl p-4 flex items-center gap-4 overflow-hidden transition-all duration-500",
-          isUnlockable ? "cursor-pointer border-primary/60 bg-white shadow-2xl shadow-primary/20" : "opacity-80"
+          "flex items-center gap-4",
+          isUnlockable ? "cursor-pointer" : "opacity-80"
         )}
       >
         {isUnlockable && (
