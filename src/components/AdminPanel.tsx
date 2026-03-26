@@ -12,6 +12,7 @@ import {
   Settings,
   X,
   ChevronDown,
+  ChevronRight,
   Zap,
   BarChart3
 } from 'lucide-react';
