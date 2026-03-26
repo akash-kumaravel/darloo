@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { 
   Plus, 
   Send, 
@@ -10,11 +10,7 @@ import {
   Clock,
   Trash2,
   Settings,
-  X,
-  ChevronDown,
-  ChevronRight,
-  Zap,
-  BarChart3
+  X
 } from 'lucide-react';
 import { 
   doc, 
@@ -26,10 +22,9 @@ import {
   query,
   orderBy,
   limit,
-  getDocs,
-  deleteDoc
+  getDocs
 } from 'firebase/firestore';
-import { db, storage, auth } from '../firebase';
+import { db, storage } from '../firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { GameStats, UserProfile, DailyMessage, NextEvent, UserMood, ChoiceResponse } from '../types';
 import { toast } from 'sonner';
@@ -40,33 +35,27 @@ import { Smile, Heart as HeartIcon, Frown, Moon, Sparkles } from 'lucide-react';
 interface AdminPanelProps {
   stats: GameStats | null;
   profile: UserProfile | null;
-  onNavigateToGifts?: () => void;
 }
 
-interface EventItem extends NextEvent {
-  id?: string;
-}
-
-interface GiftSetItem {
-  id: string;
-  option1: { title: string; message: string; image: string };
-  option2: { title: string; message: string; image: string };
-  option3: { title: string; message: string; image: string };
-  unlocked: boolean;
-  primary?: boolean;
-  createdAt: string;
-}
-
-export default function AdminPanel({ stats, profile, onNavigateToGifts }: AdminPanelProps) {
+export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   const [dailyMsg, setDailyMsg] = useState('');
   const [eventName, setEventName] = useState('');
   const [eventDate, setEventDate] = useState('');
+  const [memoryCaption, setMemoryCaption] = useState('');
+  const [memoryImage, setMemoryImage] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [showGiftForm, setShowGiftForm] = useState(false);
   const [userMoods, setUserMoods] = useState<UserMood[]>([]);
   const [choiceResponses, setChoiceResponses] = useState<ChoiceResponse[]>([]);
-  const [events, setEvents] = useState<EventItem[]>([]);
-  const [expandedSection, setExpandedSection] = useState<string>('');
-  const [giftSets, setGiftSets] = useState<GiftSetItem[]>([]);
-  const [primaryGiftId, setPrimaryGiftId] = useState<string | null>(null);
+  const [showChoiceForm, setShowChoiceForm] = useState(false);
+
+  // Choice Moment Form State
+  const [choiceQuestion, setChoiceQuestion] = useState('');
+  const [choiceOptions, setChoiceOptions] = useState([
+    { label: '', emoji: '🎬', response: '', reward: 5 },
+    { label: '', emoji: '🌆', response: '', reward: 5 },
+    { label: '', emoji: '🏡', response: '', reward: 5 },
+  ]);
 
   useEffect(() => {
     const unsubscribeMoods = onSnapshot(collection(db, 'moods'), (snap) => {
@@ -82,35 +71,9 @@ export default function AdminPanel({ stats, profile, onNavigateToGifts }: AdminP
       }
     );
 
-    const unsubscribeEvents = onSnapshot(
-      query(collection(db, 'events'), orderBy('createdAt', 'desc')),
-      (snap) => {
-        const eventList = snap.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as EventItem));
-        setEvents(eventList);
-      }
-    );
-
-    const unsubscribeGifts = onSnapshot(
-      collection(db, 'giftSets'),
-      (snap) => {
-        const gifts = snap.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as GiftSetItem));
-        setGiftSets(gifts);
-        const primary = gifts.find(g => g.primary);
-        setPrimaryGiftId(primary?.id || null);
-      }
-    );
-
     return () => {
       unsubscribeMoods();
       unsubscribeResponses();
-      unsubscribeEvents();
-      unsubscribeGifts();
     };
   }, []);
   const [giftOptions, setGiftOptions] = useState([
@@ -136,63 +99,15 @@ export default function AdminPanel({ stats, profile, onNavigateToGifts }: AdminP
   const updateNextEvent = async () => {
     if (!eventName || !eventDate) return;
     try {
-      await addDoc(collection(db, 'events'), {
+      await setDoc(doc(db, 'events', 'next'), {
         nextEvent: eventName,
-        countdown: new Date(eventDate).toISOString(),
-        createdAt: new Date().toISOString()
+        countdown: new Date(eventDate).toISOString()
       });
       toast.success('Event scheduled! 📅');
       setEventName('');
       setEventDate('');
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'events');
-    }
-  };
-
-  const deleteEvent = async (eventId: string) => {
-    try {
-      await deleteDoc(doc(db, 'events', eventId));
-      toast.success('Event deleted! 🗑️');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, 'events');
-      toast.error('Failed to delete event');
-    }
-  };
-
-  const setPrimaryGift = async (giftId: string) => {
-    try {
-      // Remove primary from all gifts
-      await Promise.all(
-        giftSets.map(gift =>
-          updateDoc(doc(db, 'giftSets', gift.id), { primary: gift.id === giftId })
-        )
-      );
-      toast.success('Primary gift set! 🎁');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'giftSets');
-      toast.error('Failed to set primary gift');
-    }
-  };
-
-  const adjustStars = async (change: number) => {
-    if (!auth.currentUser) {
-      toast.error('User not found');
-      return;
-    }
-
-    try {
-      const currentStars = stats?.totalStars || 0;
-      const newStars = Math.max(0, currentStars + change);
-      
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-        totalStars: newStars
-      });
-
-      toast.success(`Stars ${change > 0 ? 'added' : 'reduced'}! ✨ (${newStars} total)`);
-      setStarAdjustment(0);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'users');
-      toast.error('Failed to adjust stars');
+      handleFirestoreError(error, OperationType.WRITE, 'events/next');
     }
   };
 
@@ -362,190 +277,319 @@ export default function AdminPanel({ stats, profile, onNavigateToGifts }: AdminP
   };
 
   return (
-    <div className="space-y-3 pb-6">
-      {/* HEADER */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-gradient-to-r from-primary to-secondary text-white rounded-2xl p-5"
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-black">⚡ ADMIN</h1>
-            <p className="text-xs text-white/70 font-bold">Control Center</p>
-          </div>
-          <Settings className="w-7 h-7" />
+    <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-black tracking-tighter">GAME MASTER</h1>
+          <p className="text-slate-500 text-sm font-medium">Control the Loveverse</p>
         </div>
-      </motion.div>
-
-      {/* STARS SECTION */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.05 }}
-        className="glass rounded-2xl p-4"
-      >
-        <div className="flex items-center justify-between mb-3">
-          <label className="text-xs font-bold text-primary uppercase">Stars</label>
-          <div className="text-2xl font-black text-primary">{stats?.totalStars || 0}⭐</div>
+        <div className="bg-primary/10 p-3 rounded-2xl">
+          <Settings className="text-primary w-6 h-6" />
         </div>
-        <div className="grid grid-cols-4 gap-2">
-          <button
-            onClick={() => adjustStars(-5)}
-            className="bg-red-500/20 hover:bg-red-500/40 text-red-600 font-bold py-2 rounded-lg text-xs transition-colors active:scale-95"
-          >
-            -5
-          </button>
-          <button
-            onClick={() => adjustStars(-1)}
-            className="bg-orange-500/20 hover:bg-orange-500/40 text-orange-600 font-bold py-2 rounded-lg text-xs transition-colors active:scale-95"
-          >
-            -1
-          </button>
-          <button
-            onClick={() => adjustStars(5)}
-            className="bg-green-500/20 hover:bg-green-500/40 text-green-600 font-bold py-2 rounded-lg text-xs transition-colors active:scale-95"
-          >
-            +5
-          </button>
-          <button
-            onClick={() => adjustStars(25)}
-            className="bg-primary/20 hover:bg-primary/40 text-primary font-bold py-2 rounded-lg text-xs transition-colors active:scale-95"
-          >
-            +25
-          </button>
+      </div>
+
+      <StarReactor totalStars={stats?.totalStars || 0} isAdmin={true} />
+
+      {/* Mood Monitor */}
+      <div className="glass rounded-3xl p-6 space-y-4">
+        <div className="flex items-center gap-3 text-primary font-bold">
+          <Smile className="w-5 h-5" />
+          Mood Monitor
         </div>
-      </motion.div>
-
-      {/* DAILY MESSAGE SECTION */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.1 }}
-        className="glass rounded-2xl p-4"
-      >
-        <label className="text-xs font-bold text-primary mb-2 uppercase block">Daily Message 💌</label>
-        <input 
-          type="text" 
-          value={dailyMsg}
-          onChange={(e) => setDailyMsg(e.target.value)}
-          placeholder="Type a message..."
-          maxLength={100}
-          className="w-full bg-white/50 border-none rounded-lg px-3 py-2 text-xs font-medium mb-2 focus:ring-2 ring-primary outline-none"
-        />
-        <button 
-          onClick={updateDailyMessage}
-          className="w-full bg-primary hover:bg-primary/90 text-white py-2 rounded-lg font-bold text-xs transition-colors active:scale-95"
-        >
-          Send
-        </button>
-      </motion.div>
-
-      {/* EVENTS SECTION */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.15 }}
-        className="glass rounded-2xl p-4"
-      >
-        <label className="text-xs font-bold text-primary mb-3 uppercase block">Events 📅</label>
-        
-        <div className="space-y-2 mb-3">
-          <input 
-            type="text" 
-            value={eventName}
-            onChange={(e) => setEventName(e.target.value)}
-            placeholder="Event name"
-            className="w-full bg-white/50 border-none rounded-lg px-3 py-2 text-xs focus:ring-2 ring-primary outline-none"
-          />
-          <input 
-            type="datetime-local" 
-            value={eventDate}
-            onChange={(e) => setEventDate(e.target.value)}
-            className="w-full bg-white/50 border-none rounded-lg px-3 py-2 text-xs focus:ring-2 ring-primary outline-none"
-          />
-          <button 
-            onClick={updateNextEvent}
-            className="w-full bg-primary hover:bg-primary/90 text-white py-2 rounded-lg font-bold text-xs transition-colors active:scale-95"
-          >
-            Add Event
-          </button>
-        </div>
-
-        {/* Events List */}
-        <div className="space-y-2 max-h-40 overflow-y-auto">
-          {events.length === 0 ? (
-            <p className="text-xs text-slate-400 italic py-2">No events</p>
+        <div className="space-y-3">
+          {userMoods.length === 0 ? (
+            <p className="text-xs text-slate-400 italic">No moods reported yet...</p>
           ) : (
-            events.map((evt) => (
-              <motion.div
-                key={evt.id}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="flex items-center justify-between bg-white/30 p-2 rounded-lg group hover:bg-white/40 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="font-bold text-slate-800 text-xs truncate">{evt.nextEvent}</div>
-                  <div className="text-[10px] text-slate-500">{new Date(evt.countdown).toLocaleDateString()}</div>
+            userMoods.map((m, i) => (
+              <div key={i} className="flex items-center justify-between bg-white/30 p-3 rounded-2xl">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm">
+                    {getMoodIcon(m.mood)}
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-slate-700">{m.userName}</div>
+                    <div className="text-[10px] text-slate-400 uppercase font-bold tracking-tighter">
+                      {new Date(m.updatedAt).toLocaleTimeString()}
+                    </div>
+                  </div>
                 </div>
-                <button
-                  onClick={() => evt.id && deleteEvent(evt.id)}
-                  className="ml-2 px-2 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-600 rounded text-xs transition-all"
-                >
-                  🗑️
-                </button>
-              </motion.div>
+                <div className="text-xs font-black text-primary uppercase tracking-widest">
+                  {m.mood.replace('_', ' ')}
+                </div>
+              </div>
             ))
           )}
         </div>
-      </motion.div>
+      </div>
 
-      {/* PRIMARY GIFT DISPLAY */}
-      {giftSets.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="glass rounded-2xl p-4 border-2 border-primary/30"
-        >
-          <label className="text-xs font-bold text-primary mb-3 uppercase block">⭐ Primary Gift</label>
-          <div className="space-y-2">
-            {giftSets.map((gift) => (
-              <motion.button
-                key={gift.id}
-                onClick={() => setPrimaryGift(gift.id)}
-                whileTap={{ scale: 0.98 }}
-                className={cn(
-                  "w-full p-3 rounded-lg text-left transition-all text-xs font-bold",
-                  primaryGiftId === gift.id
-                    ? "bg-primary/30 border-2 border-primary text-primary"
-                    : "bg-white/20 border-2 border-transparent hover:bg-white/30"
-                )}
-              >
+      {/* Choice Responses Monitor */}
+      <div className="glass rounded-3xl p-6 space-y-4">
+        <div className="flex items-center gap-3 text-primary font-bold">
+          <Sparkles className="w-5 h-5" />
+          Choice Responses
+        </div>
+        <div className="space-y-3">
+          {choiceResponses.length === 0 ? (
+            <p className="text-xs text-slate-400 italic">No responses yet...</p>
+          ) : (
+            choiceResponses.map((r, i) => (
+              <div key={i} className="bg-white/30 p-4 rounded-2xl space-y-2">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <div>{gift.option1.title}</div>
-                    <div className="text-[10px] opacity-70">Set on {new Date(gift.createdAt).toLocaleDateString()}</div>
-                  </div>
-                  {primaryGiftId === gift.id && <div className="text-lg">✓</div>}
+                  <span className="text-sm font-black text-slate-700">{r.userName}</span>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase">
+                    {new Date(r.createdAt).toLocaleTimeString()}
+                  </span>
                 </div>
-              </motion.button>
-            ))}
-          </div>
-        </motion.div>
-      )}
+                <div className="text-xs text-slate-500 italic">"{r.question}"</div>
+                <div className="flex items-center gap-2 bg-white/50 p-2 rounded-xl">
+                  <span className="text-lg">{r.choiceEmoji}</span>
+                  <span className="text-xs font-bold text-primary uppercase tracking-widest">
+                    {r.choiceLabel}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
 
-      {/* GIFT MANAGEMENT LINK */}
-      <motion.button
-        onClick={onNavigateToGifts}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.25 }}
-        className="w-full glass rounded-2xl p-4 text-primary font-bold text-sm active:scale-95 transition-transform flex items-center justify-between hover:bg-white/5"
-      >
-        <span>🎁 Manage Gifts</span>
-        <ChevronRight className="w-4 h-4" />
-      </motion.button>
+      <div className="grid grid-cols-1 gap-6">
+        {/* Daily Message */}
+        <div className="glass rounded-3xl p-6 space-y-4">
+          <div className="flex items-center gap-3 text-primary font-bold">
+            <MessageSquare className="w-5 h-5" />
+            Daily Message
+          </div>
+          <div className="flex gap-2">
+            <input 
+              type="text" 
+              value={dailyMsg}
+              onChange={(e) => setDailyMsg(e.target.value)}
+              placeholder="Type something sweet..."
+              className="flex-1 bg-white/50 border-none rounded-xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
+            />
+            <button 
+              onClick={updateDailyMessage}
+              className="bg-primary text-white p-3 rounded-xl shadow-lg shadow-primary/20"
+            >
+              <Send className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Next Event */}
+        <div className="glass rounded-3xl p-6 space-y-4">
+          <div className="flex items-center gap-3 text-primary font-bold">
+            <Calendar className="w-5 h-5" />
+            Next Big Event
+          </div>
+          <div className="space-y-3">
+            <input 
+              type="text" 
+              value={eventName}
+              onChange={(e) => setEventName(e.target.value)}
+              placeholder="Event Name (e.g. Anniversary)"
+              className="w-full bg-white/50 border-none rounded-xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
+            />
+            <input 
+              type="date" 
+              value={eventDate}
+              onChange={(e) => setEventDate(e.target.value)}
+              className="w-full bg-white/50 border-none rounded-xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
+            />
+            <button 
+              onClick={updateNextEvent}
+              className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg shadow-primary/20"
+            >
+              Schedule Event
+            </button>
+          </div>
+        </div>
+
+        {/* Memory Upload */}
+        <div className="glass rounded-3xl p-6 space-y-4">
+          <div className="flex items-center gap-3 text-primary font-bold">
+            <ImageIcon className="w-5 h-5" />
+            Memory of the Week
+          </div>
+          <div className="space-y-3">
+            <input 
+              type="file" 
+              accept="image/*"
+              onChange={(e) => setMemoryImage(e.target.files?.[0] || null)}
+              className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+            />
+            <input 
+              type="text" 
+              value={memoryCaption}
+              onChange={(e) => setMemoryCaption(e.target.value)}
+              placeholder="Caption for this memory..."
+              className="w-full bg-white/50 border-none rounded-xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
+            />
+            <button 
+              onClick={uploadMemory}
+              disabled={isUploading}
+              className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg shadow-primary/20 disabled:opacity-50"
+            >
+              {isUploading ? 'Uploading...' : 'Upload Memory'}
+            </button>
+          </div>
+        </div>
+
+        {/* Gift Management */}
+        <div className="glass rounded-3xl p-6 space-y-4">
+          <div className="flex items-center justify-between text-primary font-bold">
+            <div className="flex items-center gap-3">
+              <Gift className="w-5 h-5" />
+              Gift Management
+            </div>
+            {showGiftForm && (
+              <button onClick={() => setShowGiftForm(false)}>
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            )}
+          </div>
+          
+          {!showGiftForm ? (
+            <button 
+              onClick={() => setShowGiftForm(true)}
+              className="w-full py-4 border-2 border-dashed border-primary/30 rounded-2xl flex items-center justify-center gap-2 text-primary font-bold hover:bg-primary/5 transition-colors"
+            >
+              <Plus className="w-5 h-5" />
+              Create New Gift Set
+            </button>
+          ) : (
+            <div className="space-y-6">
+              {giftOptions.map((opt, i) => (
+                <div key={i} className="bg-white/30 p-4 rounded-2xl space-y-3">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Option {i + 1}</div>
+                  <input 
+                    type="text" 
+                    value={opt.title}
+                    onChange={(e) => {
+                      const newOpts = [...giftOptions];
+                      newOpts[i].title = e.target.value;
+                      setGiftOptions(newOpts);
+                    }}
+                    placeholder="Gift Title"
+                    className="w-full bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
+                  />
+                  <input 
+                    type="text" 
+                    value={opt.message}
+                    onChange={(e) => {
+                      const newOpts = [...giftOptions];
+                      newOpts[i].message = e.target.value;
+                      setGiftOptions(newOpts);
+                    }}
+                    placeholder="Gift Message"
+                    className="w-full bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
+                  />
+                  <input 
+                    type="file" 
+                    accept="image/*"
+                    onChange={(e) => {
+                      const newOpts = [...giftOptions];
+                      newOpts[i].image = e.target.files?.[0] || null;
+                      setGiftOptions(newOpts);
+                    }}
+                    className="w-full text-[10px] file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-primary/10 file:text-primary"
+                  />
+                </div>
+              ))}
+              <button 
+                onClick={createGiftSet}
+                disabled={isUploading}
+                className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/20 disabled:opacity-50"
+              >
+                {isUploading ? 'Creating...' : 'Create Gift Set'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Choice Moments */}
+        <div className="glass rounded-3xl p-6 space-y-4">
+          <div className="flex items-center justify-between text-primary font-bold">
+            <div className="flex items-center gap-3">
+              <Sparkles className="w-5 h-5" />
+              Choice Moments
+            </div>
+            {showChoiceForm && (
+              <button onClick={() => setShowChoiceForm(false)}>
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            )}
+          </div>
+
+          {!showChoiceForm ? (
+            <button 
+              onClick={() => setShowChoiceForm(true)}
+              className="w-full py-4 border-2 border-dashed border-primary/30 rounded-2xl flex items-center justify-center gap-2 text-primary font-bold hover:bg-primary/5 transition-colors"
+            >
+              <Plus className="w-5 h-5" />
+              Activate Choice Moment
+            </button>
+          ) : (
+            <div className="space-y-4">
+              <input 
+                type="text" 
+                value={choiceQuestion}
+                onChange={(e) => setChoiceQuestion(e.target.value)}
+                placeholder="Question (e.g. What should we do today?)"
+                className="w-full bg-white/50 border-none rounded-xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
+              />
+              <div className="space-y-3">
+                {choiceOptions.map((opt, i) => (
+                  <div key={i} className="bg-white/30 p-4 rounded-2xl space-y-2">
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={opt.emoji}
+                        onChange={(e) => {
+                          const newOpts = [...choiceOptions];
+                          newOpts[i].emoji = e.target.value;
+                          setChoiceOptions(newOpts);
+                        }}
+                        placeholder="Emoji"
+                        className="w-12 bg-white/50 border-none rounded-xl px-2 py-2 text-center text-sm outline-none"
+                      />
+                      <input 
+                        type="text" 
+                        value={opt.label}
+                        onChange={(e) => {
+                          const newOpts = [...choiceOptions];
+                          newOpts[i].label = e.target.value;
+                          setChoiceOptions(newOpts);
+                        }}
+                        placeholder="Option Label"
+                        className="flex-1 bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
+                      />
+                    </div>
+                    <input 
+                      type="text" 
+                      value={opt.response}
+                      onChange={(e) => {
+                        const newOpts = [...choiceOptions];
+                        newOpts[i].response = e.target.value;
+                        setChoiceOptions(newOpts);
+                      }}
+                      placeholder="Response Message"
+                      className="w-full bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
+                    />
+                  </div>
+                ))}
+              </div>
+              <button 
+                onClick={createChoiceMoment}
+                className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/20"
+              >
+                Activate Moment
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
