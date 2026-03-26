@@ -1,0 +1,161 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Fields:
+//   - name: string (required)
+//   - email: string (required)
+//   - role: string (required, enum: ['user', 'admin'])
+//   - photo: string (optional)
+//
+// Collection: stats
+// Document: global
+// Fields:
+//   - totalStars: number
+//   - level: number
+//   - xp: number
+//   - lastStarGivenAt: string (ISO date)
+//
+// Collection: giftSets
+// Fields:
+//   - option1: map { title, message, image }
+//   - option2: map { title, message, image }
+//   - option3: map { title, message, image }
+//   - unlocked: bool
+//   - createdAt: string
+//
+// Collection: collection
+// Fields:
+//   - userId: string
+//   - title: string
+//   - message: string
+//   - date: string
+//   - image: string
+//
+// Collection: messages
+// Document: daily
+// Fields:
+//   - dailyMessage: string
+//   - updatedAt: string
+//
+// Collection: events
+// Document: next
+// Fields:
+//   - nextEvent: string
+//   - countdown: string
+//
+// Collection: memories
+// Fields:
+//   - weeklyMemory: string
+//   - image: string
+//   - caption: string
+//   - createdAt: string
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "akashkumaravel3@gmail.com" || 
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'name', 'email', 'role', 'photo']) &&
+             data.uid is string && data.uid.size() > 0 &&
+             data.name is string && data.name.size() > 0 &&
+             data.email is string && data.email.size() > 0 &&
+             data.role in ['user', 'admin'];
+    }
+
+    // Users
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role);
+    }
+
+    // Stats
+    match /stats/global {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+    }
+
+    // Gift Sets
+    match /giftSets/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (isAuthenticated() && hasOnlyAllowedFields(['unlocked']) && request.resource.data.unlocked == true);
+      allow delete: if isAdmin();
+    }
+
+    // Collection
+    match /collection/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+
+    // Messages
+    match /messages/daily {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Events
+    match /events/next {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Memories
+    match /memories/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    // Moods
+    match /moods/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
+    }
+
+    // Choice Moments
+    match /choiceMoments/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+      allow update: if isAdmin() || (isAuthenticated() && hasOnlyAllowedFields(['active']) && request.resource.data.active == false);
+    }
+
+    // Choice Responses
+    match /choiceResponses/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+  }
+}

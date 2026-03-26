@@ -1,0 +1,153 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and role information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "photo": { "type": "string" }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "Stats": {
+      "title": "Stats",
+      "description": "Game statistics for the relationship",
+      "type": "object",
+      "properties": {
+        "totalStars": { "type": "integer" },
+        "level": { "type": "integer" },
+        "xp": { "type": "integer" },
+        "lastStarGivenAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "GiftSet": {
+      "title": "GiftSet",
+      "description": "A set of 3 gift options created by the admin",
+      "type": "object",
+      "properties": {
+        "option1": { "$ref": "GiftOption" },
+        "option2": { "$ref": "GiftOption" },
+        "option3": { "$ref": "GiftOption" },
+        "unlocked": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "GiftOption": {
+      "title": "GiftOption",
+      "description": "A single gift option",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "image": { "type": "string" }
+      }
+    },
+    "CollectionItem": {
+      "title": "CollectionItem",
+      "description": "A gift that has been unlocked and added to the scrapbook",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "image": { "type": "string" }
+      }
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Daily message from the admin",
+      "type": "object",
+      "properties": {
+        "dailyMessage": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Event": {
+      "title": "Event",
+      "description": "Next big event countdown",
+      "type": "object",
+      "properties": {
+        "nextEvent": { "type": "string" },
+        "countdown": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Memory": {
+      "title": "Memory",
+      "description": "Memory of the week",
+      "type": "object",
+      "properties": {
+        "weeklyMemory": { "type": "string" },
+        "image": { "type": "string" },
+        "caption": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Mood": {
+      "title": "Mood",
+      "description": "Current mood of the user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "mood": { "type": "string", "enum": ["happy", "miss_you", "upset", "tired"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "mood", "updatedAt"]
+    },
+    "ChoiceMoment": {
+      "title": "ChoiceMoment",
+      "description": "An interactive choice moment created by the admin",
+      "type": "object",
+      "properties": {
+        "question": { "type": "string" },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string" },
+              "emoji": { "type": "string" },
+              "response": { "type": "string" },
+              "reward": { "type": "integer" }
+            }
+          }
+        },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["question", "options", "active"]
+    },
+    "ChoiceResponse": {
+      "title": "ChoiceResponse",
+      "description": "A user's response to a choice moment",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "momentId": { "type": "string" },
+        "question": { "type": "string" },
+        "choiceLabel": { "type": "string" },
+        "choiceEmoji": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "momentId", "choiceLabel", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": { "schema": "User", "description": "User profiles" },
+    "/stats/global": { "schema": "Stats", "description": "Global game stats" },
+    "/giftSets/{id}": { "schema": "GiftSet", "description": "Admin created gift sets" },
+    "/collection/{id}": { "schema": "CollectionItem", "description": "Unlocked gifts scrapbook" },
+    "/messages/daily": { "schema": "Message", "description": "Daily message" },
+    "/events/next": { "schema": "Event", "description": "Next big event" },
+    "/memories/{id}": { "schema": "Memory", "description": "Memory vault" },
+    "/moods/{userId}": { "schema": "Mood", "description": "User moods" },
+    "/choiceMoments/{id}": { "schema": "ChoiceMoment", "description": "Interactive moments" },
+    "/choiceResponses/{id}": { "schema": "ChoiceResponse", "description": "User responses to moments" }
+  }
+}
