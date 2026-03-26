@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Star, Heart } from 'lucide-react';
+import { Star, Heart, Gift } from 'lucide-react';
 import { doc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { toast } from 'sonner';
@@ -85,27 +85,69 @@ export default function StarReactor({ totalStars, isAdmin, cooldown = 500 }: Sta
         className="relative cursor-pointer"
         onClick={handleGiveStar}
       >
-        {/* Gift reveal background glow - only show when 25+ stars for gift unlock */}
-        {totalStars >= 25 && (
-          <motion.div 
-            animate={{ opacity: [0.2, 0.4, 0.2], scale: [1, 1.05, 1] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="absolute inset-0 bg-primary/20 blur-3xl rounded-full scale-150" 
-          />
-        )}
-        <div className="relative glass p-8 rounded-full shadow-2xl border-4 border-white">
-          <Star 
-            className={cn(
-              "w-24 h-24 transition-all duration-500",
-              totalStars > 0 ? "text-yellow-400 fill-yellow-400" : "text-slate-200"
-            )} 
-          />
+        {/* GIFT UNLOCK ANIMATIONS - Only reveal when 25+ stars */}
+        {totalStars >= 25 ? (
+          <>
+            {/* Pulsing gift box glow - animated reveal effect */}
+            <motion.div 
+              animate={{ 
+                opacity: [0.3, 0.6, 0.3],
+                scale: [1, 1.15, 1]
+              }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+              className="absolute inset-0 bg-gradient-to-br from-primary via-secondary to-primary blur-2xl rounded-full" 
+            />
+            {/* Shimmer effect for gift */}
+            <motion.div
+              animate={{ 
+                opacity: [0.2, 0.5, 0.2],
+                rotate: [0, 360]
+              }}
+              transition={{ duration: 3, repeat: Infinity }}
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent blur-xl rounded-full"
+            />
+          </>
+        ) : null}
+
+        <div className={cn(
+          "relative glass p-8 rounded-full shadow-2xl border-4 transition-all duration-500",
+          totalStars >= 25 
+            ? "border-primary shadow-[0_0_60px_rgba(255,77,109,0.6)]" 
+            : "border-white"
+        )}>
+          {totalStars >= 25 ? (
+            /* GIFT BOX - Reveals at 25+ stars with animated rotation */
+            <motion.div
+              animate={{ rotateY: [0, 360] }}
+              transition={{ repeat: Infinity, duration: 4 }}
+              className="w-24 h-24"
+            >
+              <Gift 
+                className="w-24 h-24 text-primary fill-primary drop-shadow-lg" 
+              />
+            </motion.div>
+          ) : (
+            /* STAR - Shows before 25 stars */
+            <Star 
+              className={cn(
+                "w-24 h-24 transition-all duration-500",
+                totalStars > 0 ? "text-yellow-400 fill-yellow-400" : "text-slate-200"
+              )} 
+            />
+          )}
+          
+          {/* Level Badge */}
           <motion.div
             animate={{ scale: [1, 1.2, 1] }}
             transition={{ repeat: Infinity, duration: 2 }}
-            className="absolute -top-2 -right-2 bg-primary text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg"
+            className={cn(
+              "absolute -top-2 -right-2 text-xs font-bold px-3 py-1 rounded-full shadow-lg",
+              totalStars >= 25
+                ? "bg-gradient-to-r from-primary to-secondary text-white"
+                : "bg-primary text-white"
+            )}
           >
-            LVL {Math.floor(totalStars / 10) + 1}
+            {totalStars >= 25 ? `🎁 GIFT!` : `LVL ${Math.floor(totalStars / 10) + 1}`}
           </motion.div>
         </div>
       </motion.div>
