@@ -162,107 +162,78 @@ export default function GiftSystem({ totalStars }: GiftSystemProps) {
   if (!activeGiftSet && totalStars < 25) return null;
 
   return (
-    <div className="w-full">
-      {/* MOBILE-FIRST GIFT BUTTON */}
-      <motion.button
-        whileHover={isUnlockable ? { scale: 1.02 } : {}}
-        whileTap={isUnlockable ? { scale: 0.96 } : {}}
+    <div className="space-y-3">
+      <motion.div
+        whileHover={isUnlockable ? { scale: 1.01 } : {}}
+        whileTap={isUnlockable ? { scale: 0.99 } : {}}
         onClick={handleUnlock}
-        disabled={!isUnlockable}
         className={cn(
-          "relative w-full overflow-hidden rounded-3xl transition-all duration-300",
-          "active:scale-95 touch-none",
-          isUnlockable 
-            ? "py-6 px-5 bg-gradient-to-r from-primary via-secondary to-primary text-white shadow-lg shadow-primary/40"
-            : "py-5 px-5 bg-slate-100 text-slate-400 opacity-60"
+          "relative glass rounded-2xl p-4 flex items-center gap-4 overflow-hidden transition-all duration-500",
+          isUnlockable ? "cursor-pointer border-primary/40 bg-white shadow-lg shadow-primary/5" : "opacity-80"
         )}
       >
-        {/* Animated shimmer for unlocked */}
         {isUnlockable && (
           <motion.div
-            animate={{ x: ['0%', '100%'] }}
-            transition={{ repeat: Infinity, duration: 3, ease: 'linear' }}
-            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+            animate={{ opacity: [0.1, 0.3, 0.1] }}
+            transition={{ repeat: Infinity, duration: 2 }}
+            className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/20 to-transparent -skew-x-12 translate-x-[-100%] animate-[shimmer_2s_infinite]"
           />
         )}
 
-        <div className="relative z-10 flex flex-col items-center justify-center gap-2">
-          <motion.div
-            animate={isUnlockable ? { scale: [1, 1.15, 1], rotate: [0, 5, -5, 0] } : {}}
-            transition={{ repeat: Infinity, duration: 1.5 }}
-          >
-            {isUnlockable ? (
-              <Gift className="w-8 h-8" />
-            ) : (
-              <Lock className="w-8 h-8" />
-            )}
-          </motion.div>
-          
-          <div className="text-center">
-            <div className="font-black text-lg tracking-tight">
-              {isUnlockable ? '🎁 GIFT READY!' : 'EARNING GIFT'}
-            </div>
-            <div className="text-xs font-bold opacity-80 mt-1">
-              {isUnlockable 
-                ? 'TAP TO OPEN' 
-                : `${25 - Math.max(0, 25 - totalStars)} / 25 ⭐`
-              }
-            </div>
+        <div className={cn(
+          "w-12 h-12 rounded-xl flex items-center justify-center shadow-md shrink-0",
+          isUnlockable ? "bg-primary text-white animate-pulse" : "bg-slate-100 text-slate-400"
+        )}>
+          {isUnlockable ? <Gift className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="font-black text-slate-800 text-sm tracking-tight truncate">
+            {isUnlockable ? 'SURPRISE UNLOCKED!' : 'MYSTERY GIFT'}
+          </div>
+          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
+            {isUnlockable ? 'Tap to open your gift' : `${25 - (totalStars % 25)} stars to next gift`}
           </div>
         </div>
 
-        {/* Pulsing border for unlocked */}
-        {isUnlockable && (
-          <motion.div
-            animate={{ opacity: [0.2, 0.5, 0.2] }}
-            transition={{ repeat: Infinity, duration: 1.5 }}
-            className="absolute inset-0 rounded-3xl border-2 border-white pointer-events-none"
-          />
-        )}
-      </motion.button>
+        {isUnlockable && <ChevronRight className="w-5 h-5 text-primary shrink-0" />}
+      </motion.div>
 
-      {/* Mobile Gift Modal */}
+      {/* Unlock Cinematic Modal */}
       <AnimatePresence>
         {showUnlock && activeGiftSet && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-black/98 flex flex-col items-center justify-between p-4 pb-8 overflow-y-auto"
+            className="fixed inset-0 z-[60] bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center p-6 overflow-hidden"
           >
-            {/* Close Button */}
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={handleClose}
-              disabled={isLocked}
-              className="absolute top-6 right-6 z-20 w-12 h-12 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white/70 disabled:opacity-30"
-            >
-              ✕
-            </motion.button>
+            {/* BACKGROUND DIMMING */}
+            <motion.div 
+              animate={{ 
+                opacity: selectedOption !== null ? 0.85 : 0,
+                backdropFilter: selectedOption !== null ? 'blur(8px)' : 'blur(0px)'
+              }}
+              transition={{ duration: 0.8, ease: 'easeInOut' }}
+              className="absolute inset-0 bg-black pointer-events-none z-0"
+            />
 
-            {/* Main Content */}
-            <div className="w-full flex flex-col items-center justify-center flex-1 pt-12">
-              {/* HEADER - Only show during idle phase */}
-              <AnimatePresence>
-                {revealPhase === 'idle' && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    className="text-center mb-8 w-full"
-                  >
-                    <motion.h2 
-                      className="text-3xl font-black text-white tracking-tighter mb-2"
-                    >
-                      CHOOSE YOUR GIFT
-                    </motion.h2>
-                    <p className="text-primary font-bold uppercase tracking-widest text-xs">Pick one of three</p>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+            <div className="w-full max-w-2xl flex flex-col items-center relative z-10">
+              {/* HEADING */}
+              {revealPhase === 'idle' && (
+                <motion.div
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: -20, opacity: 0 }}
+                  className="text-center mb-12"
+                >
+                  <h2 className="text-4xl font-black text-white tracking-tighter mb-2">PICK YOUR DESTINY</h2>
+                  <p className="text-primary font-bold uppercase tracking-[0.3em] text-xs">Choose one mystery card</p>
+                </motion.div>
+              )}
 
-              {/* CARD GRID - Mobile optimized */}
-              <div className="w-full flex flex-col gap-5 mb-4">
+              {/* CARD GRID */}
+              <div className="grid grid-cols-3 gap-6 w-full" style={{ perspective: '1200px' }}>
                 {[1, 2, 3].map((i) => {
                   const isSelected = selectedOption === i;
                   const isOther = selectedOption !== null && !isSelected;
@@ -276,193 +247,201 @@ export default function GiftSystem({ totalStars }: GiftSystemProps) {
                     <motion.div
                       key={i}
                       animate={{
-                        scale: isSelected && revealPhase !== 'idle' ? 1.05 : isOther && revealPhase !== 'revealOthers' && revealPhase !== 'complete' ? 0.9 : 1,
-                        opacity: isOther && revealPhase !== 'revealOthers' && revealPhase !== 'complete' ? 0.3 : 1,
-                        y: isSelected && revealPhase !== 'idle' ? -10 : 0,
+                        scale: isSelected && revealPhase !== 'idle' ? 1.12 : isOther && revealPhase !== 'revealOthers' && revealPhase !== 'complete' ? 0.85 : 1,
+                        opacity: isOther && revealPhase !== 'revealOthers' && revealPhase !== 'complete' ? 0.25 : 1,
+                        y: isSelected && revealPhase !== 'idle' ? -30 : 0,
                         rotateY: isFlipped ? 180 : 0,
                         zIndex: isSelected ? 10 : 1
                       }}
                       transition={{ 
-                        duration: isFlipped && isOther ? 1.0 : isFlipped && isSelected ? 1.4 : 0.4,
-                        ease: isFlipped ? "easeInOut" : "easeOut"
+                        duration: isFlipped && isOther ? 1.2 : isFlipped && isSelected ? 1.8 : 0.6,
+                        ease: isFlipped ? "easeInOut" : "easeOut",
+                        rotateY: { duration: isFlipped && isSelected ? 1.8 : 1.2 }
                       }}
                       style={{ transformStyle: 'preserve-3d' }}
-                      className="w-full h-40 cursor-pointer"
+                      className={cn(
+                        "relative aspect-[2/3] cursor-pointer transition-all",
+                        !isLocked && revealPhase === 'idle' ? 'cursor-pointer hover:scale-105' : 'cursor-not-allowed'
+                      )}
                       onClick={() => !isLocked && revealPhase === 'idle' && handleSelect(i)}
                     >
-                      {/* Card Front - Mystery */}
+                      {/* CARD FRONT */}
                       <div 
-                        className="absolute inset-0 w-full h-40 bg-gradient-to-br from-primary/80 to-secondary/80 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center gap-3 border-2 border-white/30 shadow-lg"
+                        className="absolute inset-0 glass rounded-3xl flex flex-col items-center justify-center gap-4 border-2 border-white/20 backface-hidden shadow-2xl"
                         style={{ backfaceVisibility: 'hidden' }}
                       >
                         <motion.div
-                          animate={{ opacity: [0.4, 0.8, 0.4] }}
+                          animate={{ opacity: [0.3, 0.6, 0.3] }}
                           transition={{ duration: 2, repeat: Infinity }}
-                          className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent rounded-2xl"
+                          className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent rounded-3xl"
                         />
                         
-                        <motion.div
-                          animate={{ scale: [1, 1.2, 1], y: [0, -5, 0] }}
-                          transition={{ duration: 1.2, repeat: Infinity }}
-                          className="relative z-10"
-                        >
-                          <Heart className="w-10 h-10 text-white/70" />
-                        </motion.div>
-                        
-                        <motion.p
-                          animate={{ opacity: [0.5, 1, 0.5] }}
-                          transition={{ duration: 0.8, repeat: Infinity }}
-                          className="text-white font-black text-2xl relative z-10"
-                        >
-                          ?
-                        </motion.p>
-
-                        {revealPhase === 'idle' && (
-                          <motion.p
-                            animate={{ opacity: [0.6, 1, 0.6] }}
-                            transition={{ duration: 1, repeat: Infinity }}
-                            className="text-white/80 text-xs font-bold uppercase tracking-wide absolute bottom-4"
-                          >
-                            ← SWIPE or TAP →
-                          </motion.p>
-                        )}
+                        <div className="w-14 h-14 bg-white/10 rounded-full flex items-center justify-center relative z-10 border border-white/20">
+                          <Heart className="w-7 h-7 text-white/60" />
+                        </div>
+                        <div className="text-white font-black text-5xl opacity-20 relative z-10">?</div>
                       </div>
 
-                      {/* Card Back - Revealed */}
+                      {/* CARD BACK */}
                       <div 
                         className={cn(
-                          "absolute inset-0 w-full h-40 rounded-2xl flex flex-col items-center justify-between p-4 border-2 shadow-lg",
+                          "absolute inset-0 rounded-3xl flex flex-col items-center justify-start p-5 border-2 overflow-hidden shadow-2xl",
                           isSelected 
                             ? "bg-white border-white shadow-[0_0_60px_rgba(255,77,109,0.4)]" 
-                            : "bg-white/10 border-white/20 backdrop-blur-sm"
+                            : "bg-white/15 border-white/30 backdrop-blur-sm"
                         )}
                         style={{ 
                           backfaceVisibility: 'hidden',
                           transform: 'rotateY(180deg)'
                         }}
                       >
-                        {/* Image */}
                         <motion.img 
                           src={opt.image} 
-                          alt={opt.title}
-                          className="w-full h-20 rounded-lg object-cover shadow-md"
+                          alt={opt.title} 
+                          className="w-full aspect-square rounded-2xl object-cover shadow-lg"
                           initial={{ opacity: 0, scale: 0.8 }}
                           animate={{ 
-                            opacity: isSelected ? 1 : 0.7,
-                            scale: 1
+                            opacity: isSelected ? 1 : 0.7, 
+                            scale: 1 
                           }}
-                          transition={{ duration: 0.6, delay: isSelected ? 1.2 : 0 }}
+                          transition={{ delay: isSelected ? 2.0 : revealPhase === 'revealOthers' ? 4.2 : 0, duration: 1 }}
                         />
 
-                        {/* Title */}
-                        <motion.h3
-                          className={cn(
-                            "font-black uppercase text-center leading-tight",
-                            isSelected ? "text-slate-900 text-sm" : "text-white text-xs"
-                          )}
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          transition={{ delay: isSelected ? 1.2 : 3.5 }}
-                        >
-                          {opt.title}
-                        </motion.h3>
+                        <div className="text-center flex-1 flex flex-col justify-between w-full mt-4">
+                          <motion.h3
+                            className={cn(
+                              "font-black tracking-tight uppercase leading-none mb-2",
+                              isSelected ? "text-slate-900 text-base" : "text-white text-xs"
+                            )}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: isSelected ? 2.0 : revealPhase === 'revealOthers' ? 4.2 : 0 }}
+                          >
+                            {opt.title}
+                          </motion.h3>
+
+                          <AnimatePresence>
+                            {(
+                              (isSelected && (revealPhase === 'revealing' || revealPhase === 'revealOthers' || revealPhase === 'complete')) ||
+                              (!isSelected && (revealPhase === 'revealOthers' || revealPhase === 'complete'))
+                            ) && (
+                              <motion.div
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.6 }}
+                                className={cn(
+                                  "text-[11px] font-medium leading-tight italic",
+                                  isSelected ? "text-primary" : "text-white/70"
+                                )}
+                              >
+                                {isSelected ? (
+                                  <Typewriter text={opt.message} speed={40} />
+                                ) : (
+                                  opt.message
+                                )}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
                       </div>
+
+                      {isSelected && revealPhase === 'flipping' && (
+                        <motion.div
+                          animate={{ 
+                            opacity: [0.2, 0.5, 0.2],
+                            scale: [1, 1.05, 1]
+                          }}
+                          transition={{ duration: 1.8, repeat: 1 }}
+                          className="absolute inset-0 bg-gradient-to-br from-primary/40 via-primary/20 to-transparent blur-3xl rounded-3xl pointer-events-none"
+                        />
+                      )}
                     </motion.div>
                   );
                 })}
               </div>
 
-              {/* CONGRATULATIONS OVERLAY - Mobile optimized */}
+              {/* WIN ANNOUNCEMENT */}
               <AnimatePresence>
                 {(revealPhase === 'won' || revealPhase === 'revealing') && (
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-30 p-6"
+                    exit={{ opacity: 0, scale: 1.2 }}
+                    transition={{ duration: 0.5 }}
+                    className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-20"
                   >
-                    {/* Background glow */}
                     <motion.div
-                      animate={{ 
-                        scale: [1, 1.3, 1],
-                        opacity: [0.2, 0.4, 0.2]
-                      }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                      className="absolute inset-0 bg-gradient-to-t from-primary/40 via-primary/20 to-transparent blur-2xl -z-10"
-                    />
-
-                    <motion.div
-                      initial={{ scale: 0.8, opacity: 0, y: 30 }}
-                      animate={{ scale: 1, opacity: 1, y: 0 }}
-                      exit={{ scale: 0.8, opacity: 0, y: -30 }}
-                      transition={{ duration: 0.6, type: 'spring', stiffness: 120 }}
-                      className="text-center space-y-3 max-w-xs"
+                      initial={{ scale: 0.5, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 1.2, opacity: 0 }}
+                      transition={{ duration: 0.6, ease: 'easeOut' }}
+                      className="text-center"
                     >
-                      <motion.h1
+                      <motion.div
+                        animate={{ 
+                          scale: [1, 1.2, 1],
+                          opacity: [0.3, 0.5, 0.3]
+                        }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                        className="absolute inset-0 bg-white/10 blur-3xl rounded-full -z-10"
+                      />
+
+                      <motion.h2
                         animate={{ 
                           scale: [1, 1.05, 1],
                           textShadow: [
-                            '0 0 10px rgba(255,77,109,0)',
-                            '0 0 40px rgba(255,77,109,0.8)',
-                            '0 0 15px rgba(255,77,109,0.4)'
+                            '0 0 0px rgba(255,77,109,0)',
+                            '0 0 30px rgba(255,77,109,0.5)',
+                            '0 0 0px rgba(255,77,109,0)'
                           ]
                         }}
                         transition={{ duration: 2, repeat: Infinity }}
-                        className="text-4xl md:text-5xl font-black text-white drop-shadow-2xl leading-tight"
+                        className="text-5xl md:text-6xl font-black text-white tracking-tighter mb-6 drop-shadow-2xl"
                       >
-                        🎉 CONGRATS! 🎉
-                      </motion.h1>
+                        Congratulations Darloo 💖
+                      </motion.h2>
 
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.2 }}
-                        className="text-base md:text-lg text-white/90 font-bold uppercase tracking-wider"
+                      <motion.p
+                        animate={{ opacity: [0.8, 1, 0.8] }}
+                        transition={{ duration: 1.5, repeat: Infinity }}
+                        className="text-2xl md:text-3xl font-black text-primary uppercase tracking-[0.4em] drop-shadow-lg"
                       >
-                        You Won<br/>
-                        <span className="text-primary text-lg md:text-xl font-black">
-                          {selectedOption === 1 ? activeGiftSet.option1.title : selectedOption === 2 ? activeGiftSet.option2.title : activeGiftSet.option3.title}
-                        </span>
-                      </motion.div>
+                        YOU WON
+                      </motion.p>
 
-                      <motion.div
-                        animate={{ scale: [0.8, 1, 0.8] }}
-                        transition={{ duration: 1.2, repeat: Infinity }}
-                        className="text-4xl"
+                      <motion.p
+                        className="text-xl md:text-2xl font-bold text-white uppercase tracking-wider mt-4 drop-shadow-lg"
                       >
-                        💖
-                      </motion.div>
-
-                      {revealPhase === 'revealing' && (
-                        <motion.p
-                          animate={{ opacity: [0.6, 1, 0.6] }}
-                          transition={{ duration: 1, repeat: Infinity }}
-                          className="text-primary font-bold uppercase text-xs tracking-widest pt-2"
-                        >
-                          Gift Loading...
-                        </motion.p>
-                      )}
+                        {selectedOption === 1 ? activeGiftSet.option1.title : selectedOption === 2 ? activeGiftSet.option2.title : activeGiftSet.option3.title}
+                      </motion.p>
                     </motion.div>
                   </motion.div>
                 )}
               </AnimatePresence>
-            </div>
 
-            {/* Action Button at Bottom */}
-            <AnimatePresence>
-              {revealPhase === 'complete' && (
-                <motion.button
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 20 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleClose}
-                  className="w-full max-w-xs bg-gradient-to-r from-primary to-secondary text-white py-4 rounded-2xl font-black text-sm tracking-widest uppercase shadow-lg shadow-primary/40 active:scale-95"
-                >
-                  ✨ Continue ✨
-                </motion.button>
-              )}
-            </AnimatePresence>
+              {/* COMPLETE BUTTON */}
+              <AnimatePresence>
+                {revealPhase === 'complete' && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 20 }}
+                    transition={{ duration: 0.6 }}
+                    className="mt-20 w-full max-w-xs"
+                  >
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={handleClose}
+                      className="w-full bg-gradient-to-r from-primary to-secondary text-white py-6 rounded-2xl font-black text-sm tracking-[0.3em] uppercase shadow-2xl shadow-primary/40 hover:shadow-primary/60 transition-all"
+                    >
+                      Continue Journey
+                    </motion.button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

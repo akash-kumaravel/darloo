@@ -340,532 +340,205 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
         animate={{ opacity: 1, y: 0 }}
         className="bg-gradient-to-r from-primary to-secondary text-white rounded-3xl p-6"
       >
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-black tracking-tighter">⚡ GAME MASTER</h1>
-            <p className="text-sm text-white/80 font-bold">Full control over Loveverse</p>
+            <h1 className="text-3xl font-black tracking-tighter">⚡ ADMIN</h1>
+            <p className="text-xs text-white/80 font-bold">Control Center</p>
           </div>
-          <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center">
-            <Settings className="w-7 h-7" />
-          </div>
+          <Settings className="w-8 h-8" />
         </div>
       </motion.div>
 
-      {/* STAR MONITOR & CONTROL */}
+      {/* STAR CONTROL - Always Visible */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.1 }}
-        className="glass rounded-3xl p-6 space-y-4"
+        className="glass rounded-3xl p-5"
       >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 text-primary font-bold text-lg">
-            <Zap className="w-6 h-6" />
-            Star Control
-          </div>
-          <div className="text-3xl font-black text-primary">{stats?.totalStars || 0} ⭐</div>
+        <div className="flex items-center justify-between mb-4">
+          <div className="font-bold text-primary text-sm">STARS: <span className="text-2xl">{stats?.totalStars || 0}⭐</span></div>
         </div>
-        
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => adjustStars(-5)}
-            className="flex-1 bg-red-500/20 hover:bg-red-500/40 text-red-600 font-black py-3 rounded-xl transition-colors active:scale-95"
+            className="bg-red-500/20 hover:bg-red-500/40 text-red-600 font-bold py-2 rounded-xl text-xs transition-colors active:scale-95"
           >
-            - 5 Stars
-          </button>
-          <button
-            onClick={() => adjustStars(-1)}
-            className="flex-1 bg-orange-500/20 hover:bg-orange-500/40 text-orange-600 font-black py-3 rounded-xl transition-colors active:scale-95"
-          >
-            - 1 Star
+            -5
           </button>
           <button
             onClick={() => adjustStars(5)}
-            className="flex-1 bg-green-500/20 hover:bg-green-500/40 text-green-600 font-black py-3 rounded-xl transition-colors active:scale-95"
+            className="bg-green-500/20 hover:bg-green-500/40 text-green-600 font-bold py-2 rounded-xl text-xs transition-colors active:scale-95"
           >
-            + 5 Stars
+            +5
+          </button>
+          <button
+            onClick={() => adjustStars(-1)}
+            className="bg-orange-500/20 hover:bg-orange-500/40 text-orange-600 font-bold py-2 rounded-xl text-xs transition-colors active:scale-95"
+          >
+            -1
           </button>
           <button
             onClick={() => adjustStars(25)}
-            className="flex-1 bg-primary/20 hover:bg-primary/40 text-primary font-black py-3 rounded-xl transition-colors active:scale-95"
+            className="bg-primary/20 hover:bg-primary/40 text-primary font-bold py-2 rounded-xl text-xs transition-colors active:scale-95"
           >
-            + 25 Stars
+            +25
           </button>
         </div>
       </motion.div>
 
-      {/* EVENTS MANAGEMENT */}
+      {/* DAILY MESSAGE */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.15 }}
+        className="glass rounded-3xl p-5"
+      >
+        <label className="block text-xs font-bold text-primary mb-2 uppercase">Daily Message</label>
+        <input 
+          type="text" 
+          value={dailyMsg}
+          onChange={(e) => setDailyMsg(e.target.value)}
+          placeholder="Type a message..."
+          maxLength={150}
+          className="w-full bg-white/50 border-none rounded-xl px-3 py-2 text-sm font-medium mb-2 focus:ring-2 ring-primary outline-none"
+        />
+        <button 
+          onClick={updateDailyMessage}
+          className="w-full bg-primary hover:bg-primary/90 text-white py-2 rounded-xl font-bold text-xs transition-colors active:scale-95"
+        >
+          Send Message 💌
+        </button>
+      </motion.div>
+
+      {/* EVENTS SECTION - No Dropdown */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.2 }}
-        className="glass rounded-3xl overflow-hidden"
+        className="glass rounded-3xl p-5"
       >
-        <motion.button
-          onClick={() => setExpandedSection(expandedSection === 'events' ? '' : 'events')}
-          className="w-full p-6 flex items-center justify-between hover:bg-white/5 transition-colors"
-        >
-          <div className="flex items-center gap-3 text-primary font-bold text-lg">
-            <Calendar className="w-6 h-6" />
-            Events Management
-          </div>
-          <motion.div
-            animate={{ rotate: expandedSection === 'events' ? 180 : 0 }}
-            transition={{ duration: 0.3 }}
+        <label className="block text-xs font-bold text-primary mb-3 uppercase">Events</label>
+        
+        {/* Create Event Form */}
+        <div className="space-y-2 mb-4 pb-4 border-b border-white/10">
+          <input 
+            type="text" 
+            value={eventName}
+            onChange={(e) => setEventName(e.target.value)}
+            placeholder="Event name"
+            className="w-full bg-white/50 border-none rounded-xl px-3 py-2 text-xs focus:ring-2 ring-primary outline-none"
+          />
+          <input 
+            type="datetime-local" 
+            value={eventDate}
+            onChange={(e) => setEventDate(e.target.value)}
+            className="w-full bg-white/50 border-none rounded-xl px-3 py-2 text-xs focus:ring-2 ring-primary outline-none"
+          />
+          <button 
+            onClick={updateNextEvent}
+            className="w-full bg-primary hover:bg-primary/90 text-white py-2 rounded-xl font-bold text-xs transition-colors active:scale-95"
           >
-            <ChevronDown className="w-5 h-5 text-primary" />
-          </motion.div>
-        </motion.button>
+            Add Event 📅
+          </button>
+        </div>
 
-        <AnimatePresence>
-          {expandedSection === 'events' && (
-            <motion.div
-              initial={{ height: 0 }}
-              animate={{ height: 'auto' }}
-              exit={{ height: 0 }}
-              transition={{ duration: 0.3 }}
-              className="overflow-hidden border-t border-white/10"
-            >
-              <div className="p-6 space-y-4">
-                {/* Create Event Form */}
-                <div className="space-y-3 pb-4 border-b border-white/10">
-                  <div className="text-sm font-bold text-primary uppercase tracking-widest">Create New Event</div>
-                  <input 
-                    type="text" 
-                    value={eventName}
-                    onChange={(e) => setEventName(e.target.value)}
-                    placeholder="Event Name"
-                    className="w-full bg-white/50 border-none rounded-2xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm font-medium"
-                  />
-                  <input 
-                    type="datetime-local" 
-                    value={eventDate}
-                    onChange={(e) => setEventDate(e.target.value)}
-                    className="w-full bg-white/50 border-none rounded-2xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
-                  />
-                  <button 
-                    onClick={updateNextEvent}
-                    className="w-full bg-primary hover:bg-primary/90 text-white py-3 rounded-2xl font-black transition-colors active:scale-95"
-                  >
-                    + Schedule Event
-                  </button>
+        {/* Events List */}
+        <div className="space-y-2 max-h-48 overflow-y-auto">
+          {events.length === 0 ? (
+            <p className="text-xs text-slate-400 italic py-2">No events</p>
+          ) : (
+            events.map((evt) => (
+              <motion.div
+                key={evt.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex items-center justify-between bg-white/30 p-3 rounded-xl group hover:bg-white/40 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-slate-800 text-xs truncate">{evt.nextEvent}</div>
+                  <div className="text-[10px] text-slate-500">{new Date(evt.countdown).toLocaleDateString()}</div>
                 </div>
-
-                {/* Events List */}
-                <div className="space-y-2">
-                  <div className="text-sm font-bold text-slate-500 uppercase tracking-widest">Active Events</div>
-                  {events.length === 0 ? (
-                    <p className="text-xs text-slate-400 italic py-3">No events scheduled</p>
-                  ) : (
-                    events.map((evt, idx) => (
-                      <motion.div
-                        key={evt.id}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 20 }}
-                        transition={{ delay: idx * 0.05 }}
-                        className="flex items-center justify-between bg-white/30 p-4 rounded-2xl group hover:bg-white/40 transition-colors"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="font-bold text-slate-800 truncate">{evt.nextEvent}</div>
-                          <div className="text-xs text-slate-500 mt-1">
-                            {new Date(evt.countdown).toLocaleDateString()} {new Date(evt.countdown).toLocaleTimeString()}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => evt.id && deleteEvent(evt.id)}
-                          className="ml-3 p-2 bg-red-500/20 hover:bg-red-500/40 text-red-600 rounded-xl opacity-0 group-hover:opacity-100 transition-all"
-                          title="Delete event"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </motion.div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
-
-      {/* MESSAGING & CONTENT */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.3 }}
-        className="glass rounded-3xl overflow-hidden"
-      >
-        <motion.button
-          onClick={() => setExpandedSection(expandedSection === 'messaging' ? '' : 'messaging')}
-          className="w-full p-6 flex items-center justify-between hover:bg-white/5 transition-colors"
-        >
-          <div className="flex items-center gap-3 text-primary font-bold text-lg">
-            <MessageSquare className="w-6 h-6" />
-            Messaging & Content
-          </div>
-          <motion.div
-            animate={{ rotate: expandedSection === 'messaging' ? 180 : 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <ChevronDown className="w-5 h-5 text-primary" />
-          </motion.div>
-        </motion.button>
-
-        <AnimatePresence>
-          {expandedSection === 'messaging' && (
-            <motion.div
-              initial={{ height: 0 }}
-              animate={{ height: 'auto' }}
-              exit={{ height: 0 }}
-              transition={{ duration: 0.3 }}
-              className="overflow-hidden border-t border-white/10"
-            >
-              <div className="p-6 space-y-4 border-b border-white/10">
-                <div className="text-sm font-bold text-slate-500 uppercase tracking-widest">Daily Message</div>
-                <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    value={dailyMsg}
-                    onChange={(e) => setDailyMsg(e.target.value)}
-                    placeholder="Type something sweet..."
-                    className="flex-1 bg-white/50 border-none rounded-2xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
-                  />
-                  <button 
-                    onClick={updateDailyMessage}
-                    className="bg-primary hover:bg-primary/90 text-white p-3 rounded-2xl shadow-lg shadow-primary/20"
-                  >
-                    <Send className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-6 space-y-4">
-                <div className="text-sm font-bold text-slate-500 uppercase tracking-widest">Memory of the Week</div>
-                <input 
-                  type="file" 
-                  accept="image/*"
-                  onChange={(e) => setMemoryImage(e.target.files?.[0] || null)}
-                  className="w-full text-xs file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-primary/20 file:text-primary hover:file:bg-primary/30 cursor-pointer"
-                />
-                <input 
-                  type="text" 
-                  value={memoryCaption}
-                  onChange={(e) => setMemoryCaption(e.target.value)}
-                  placeholder="Memory caption..."
-                  className="w-full bg-white/50 border-none rounded-2xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
-                />
-                <button 
-                  onClick={uploadMemory}
-                  disabled={isUploading}
-                  className="w-full bg-primary hover:bg-primary/90 text-white py-3 rounded-2xl font-bold disabled:opacity-50 transition-colors active:scale-95"
+                <button
+                  onClick={() => evt.id && deleteEvent(evt.id)}
+                  className="ml-2 p-1 bg-red-500/20 hover:bg-red-500/40 text-red-600 rounded-lg transition-all"
                 >
-                  {isUploading ? '⏳ Uploading...' : '📤 Upload Memory'}
+                  🗑️
                 </button>
-              </div>
-            </motion.div>
+              </motion.div>
+            ))
           )}
-        </AnimatePresence>
+        </div>
       </motion.div>
 
-      {/* MONITORING */}
+      {/* GIFT SETS */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.4 }}
-        className="glass rounded-3xl overflow-hidden"
+        transition={{ delay: 0.25 }}
+        className="glass rounded-3xl p-5"
       >
-        <motion.button
-          onClick={() => setExpandedSection(expandedSection === 'monitoring' ? '' : 'monitoring')}
-          className="w-full p-6 flex items-center justify-between hover:bg-white/5 transition-colors"
+        <label className="block text-xs font-bold text-primary mb-3 uppercase">Create Gift Set</label>
+        <button 
+          onClick={() => setShowGiftForm(!showGiftForm)}
+          className="w-full bg-primary hover:bg-primary/90 text-white py-2 rounded-xl font-bold text-xs transition-colors active:scale-95"
         >
-          <div className="flex items-center gap-3 text-primary font-bold text-lg">
-            <BarChart3 className="w-6 h-6" />
-            Mood & Response Monitor
-          </div>
+          {showGiftForm ? '✕ CLOSE' : '+ NEW GIFT PACK'}
+        </button>
+
+        {showGiftForm && (
           <motion.div
-            animate={{ rotate: expandedSection === 'monitoring' ? 180 : 0 }}
-            transition={{ duration: 0.3 }}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            className="mt-4 space-y-3 border-t border-white/10 pt-4"
           >
-            <ChevronDown className="w-5 h-5 text-primary" />
-          </motion.div>
-        </motion.button>
-
-        <AnimatePresence>
-          {expandedSection === 'monitoring' && (
-            <motion.div
-              initial={{ height: 0 }}
-              animate={{ height: 'auto' }}
-              exit={{ height: 0 }}
-              transition={{ duration: 0.3 }}
-              className="overflow-hidden border-t border-white/10"
-            >
-              <div className="p-6 space-y-6">
-                {/* Mood Monitor */}
-                <div className="space-y-3">
-                  <div className="text-sm font-bold text-slate-500 uppercase tracking-widest">Recent Moods</div>
-                  {userMoods.length === 0 ? (
-                    <p className="text-xs text-slate-400 italic py-3">No moods reported yet</p>
-                  ) : (
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {userMoods.map((m, i) => (
-                        <div key={i} className="flex items-center justify-between bg-white/30 p-3 rounded-2xl">
-                          <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm shrink-0">
-                              {getMoodIcon(m.mood)}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="text-xs font-bold text-slate-700 truncate">{m.userName}</div>
-                              <div className="text-[9px] text-slate-400">{new Date(m.updatedAt).toLocaleTimeString()}</div>
-                            </div>
-                          </div>
-                          <div className="text-[9px] font-black text-primary uppercase tracking-widest shrink-0">
-                            {m.mood.replace('_', ' ')}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Choice Responses */}
-                <div className="border-t border-white/10 pt-4 space-y-3">
-                  <div className="text-sm font-bold text-slate-500 uppercase tracking-widest">Choice Responses</div>
-                  {choiceResponses.length === 0 ? (
-                    <p className="text-xs text-slate-400 italic py-3">No responses yet</p>
-                  ) : (
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {choiceResponses.map((r, i) => (
-                        <div key={i} className="bg-white/20 p-3 rounded-2xl space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-700">{r.userName}</span>
-                            <span className="text-[9px] text-slate-400">{new Date(r.createdAt).toLocaleTimeString()}</span>
-                          </div>
-                          <div className="flex items-center gap-2 bg-white/40 p-2 rounded-xl">
-                            <span className="text-base">{r.choiceEmoji}</span>
-                            <span className="text-[9px] font-bold text-primary uppercase">{r.choiceLabel}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+            {giftOptions.map((opt, i) => (
+              <div key={i} className="space-y-2 pb-3 border-b border-white/10">
+                <input 
+                  type="text"
+                  value={opt.title}
+                  onChange={(e) => {
+                    const updated = [...giftOptions];
+                    updated[i].title = e.target.value;
+                    setGiftOptions(updated);
+                  }}
+                  placeholder={`Gift ${i + 1} Title`}
+                  className="w-full bg-white/50 border-none rounded-lg px-3 py-2 text-xs focus:ring-2 ring-primary outline-none"
+                />
+                <textarea
+                  value={opt.message}
+                  onChange={(e) => {
+                    const updated = [...giftOptions];
+                    updated[i].message = e.target.value;
+                    setGiftOptions(updated);
+                  }}
+                  placeholder="Message"
+                  rows={2}
+                  className="w-full bg-white/50 border-none rounded-lg px-3 py-2 text-xs focus:ring-2 ring-primary outline-none resize-none"
+                />
+                <label className="block text-xs text-slate-500">
+                  <input 
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const updated = [...giftOptions];
+                      updated[i].image = e.target.files?.[0] || null;
+                      setGiftOptions(updated);
+                    }}
+                    className="w-full text-xs"
+                  />
+                </label>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
-
-      {/* GIFT MANAGEMENT */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.5 }}
-        className="glass rounded-3xl overflow-hidden"
-      >
-        <motion.button
-          onClick={() => setExpandedSection(expandedSection === 'gifts' ? '' : 'gifts')}
-          className="w-full p-6 flex items-center justify-between hover:bg-white/5 transition-colors"
-        >
-          <div className="flex items-center gap-3 text-primary font-bold text-lg">
-            <Gift className="w-6 h-6" />
-            Gift Management
-          </div>
-          <motion.div
-            animate={{ rotate: expandedSection === 'gifts' ? 180 : 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <ChevronDown className="w-5 h-5 text-primary" />
-          </motion.div>
-        </motion.button>
-
-        <AnimatePresence>
-          {expandedSection === 'gifts' && (
-            <motion.div
-              initial={{ height: 0 }}
-              animate={{ height: 'auto' }}
-              exit={{ height: 0 }}
-              transition={{ duration: 0.3 }}
-              className="overflow-hidden border-t border-white/10"
+            ))}
+            <button 
+              onClick={createGiftSet}
+              disabled={isUploading}
+              className="w-full bg-primary hover:bg-primary/90 text-white py-2 rounded-xl font-bold text-xs transition-colors disabled:opacity-50 active:scale-95"
             >
-              <div className="p-6 space-y-4">
-                {!showGiftForm ? (
-                  <button 
-                    onClick={() => setShowGiftForm(true)}
-                    className="w-full py-4 border-2 border-dashed border-primary/30 rounded-2xl flex items-center justify-center gap-2 text-primary font-bold hover:bg-primary/5 transition-colors"
-                  >
-                    <Plus className="w-5 h-5" />
-                    Create New Gift Set
-                  </button>
-                ) : (
-                  <div className="space-y-4">
-                    <button 
-                      onClick={() => setShowGiftForm(false)}
-                      className="w-full text-right text-slate-500 hover:text-slate-700 text-sm font-bold"
-                    >
-                      ✕ Close
-                    </button>
-                    {giftOptions.map((opt, i) => (
-                      <div key={i} className="bg-white/30 p-4 rounded-2xl space-y-3">
-                        <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">Option {i + 1}</div>
-                        <input 
-                          type="text" 
-                          value={opt.title}
-                          onChange={(e) => {
-                            const newOpts = [...giftOptions];
-                            newOpts[i].title = e.target.value;
-                            setGiftOptions(newOpts);
-                          }}
-                          placeholder="Gift Title"
-                          className="w-full bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
-                        />
-                        <input 
-                          type="text" 
-                          value={opt.message}
-                          onChange={(e) => {
-                            const newOpts = [...giftOptions];
-                            newOpts[i].message = e.target.value;
-                            setGiftOptions(newOpts);
-                          }}
-                          placeholder="Gift Message"
-                          className="w-full bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
-                        />
-                        <input 
-                          type="file" 
-                          accept="image/*"
-                          onChange={(e) => {
-                            const newOpts = [...giftOptions];
-                            newOpts[i].image = e.target.files?.[0] || null;
-                            setGiftOptions(newOpts);
-                          }}
-                          className="w-full text-xs file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-primary/10 file:text-primary cursor-pointer"
-                        />
-                      </div>
-                    ))}
-                    <button 
-                      onClick={createGiftSet}
-                      disabled={isUploading}
-                      className="w-full bg-primary hover:bg-primary/90 text-white py-3 rounded-2xl font-bold disabled:opacity-50 transition-colors active:scale-95"
-                    >
-                      {isUploading ? '⏳ Creating...' : '🎁 Create Gift Set'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
-
-      {/* CHOICE MOMENTS MANAGEMENT */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.6 }}
-        className="glass rounded-3xl overflow-hidden"
-      >
-        <motion.button
-          onClick={() => setExpandedSection(expandedSection === 'choices' ? '' : 'choices')}
-          className="w-full p-6 flex items-center justify-between hover:bg-white/5 transition-colors"
-        >
-          <div className="flex items-center gap-3 text-primary font-bold text-lg">
-            <Sparkles className="w-6 h-6" />
-            Choice Moments
-          </div>
-          <motion.div
-            animate={{ rotate: expandedSection === 'choices' ? 180 : 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <ChevronDown className="w-5 h-5 text-primary" />
+              {isUploading ? 'Creating...' : 'Create Gift Pack 🎁'}
+            </button>
           </motion.div>
-        </motion.button>
-
-        <AnimatePresence>
-          {expandedSection === 'choices' && (
-            <motion.div
-              initial={{ height: 0 }}
-              animate={{ height: 'auto' }}
-              exit={{ height: 0 }}
-              transition={{ duration: 0.3 }}
-              className="overflow-hidden border-t border-white/10"
-            >
-              <div className="p-6 space-y-4">
-                {!showChoiceForm ? (
-                  <button 
-                    onClick={() => setShowChoiceForm(true)}
-                    className="w-full py-4 border-2 border-dashed border-primary/30 rounded-2xl flex items-center justify-center gap-2 text-primary font-bold hover:bg-primary/5 transition-colors"
-                  >
-                    <Plus className="w-5 h-5" />
-                    Activate Choice Moment
-                  </button>
-                ) : (
-                  <div className="space-y-4">
-                    <button 
-                      onClick={() => setShowChoiceForm(false)}
-                      className="w-full text-right text-slate-500 hover:text-slate-700 text-sm font-bold"
-                    >
-                      ✕ Close
-                    </button>
-                    <input 
-                      type="text" 
-                      value={choiceQuestion}
-                      onChange={(e) => setChoiceQuestion(e.target.value)}
-                      placeholder="Question (e.g. What should we do today?)"
-                      className="w-full bg-white/50 border-none rounded-2xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
-                    />
-                    <div className="space-y-3">
-                      {choiceOptions.map((opt, i) => (
-                        <div key={i} className="bg-white/30 p-4 rounded-2xl space-y-2">
-                          <div className="flex gap-2">
-                            <input 
-                              type="text" 
-                              value={opt.emoji}
-                              onChange={(e) => {
-                                const newOpts = [...choiceOptions];
-                                newOpts[i].emoji = e.target.value;
-                                setChoiceOptions(newOpts);
-                              }}
-                              placeholder="Emoji"
-                              className="w-12 bg-white/50 border-none rounded-xl px-2 py-2 text-center text-sm outline-none"
-                            />
-                            <input 
-                              type="text" 
-                              value={opt.label}
-                              onChange={(e) => {
-                                const newOpts = [...choiceOptions];
-                                newOpts[i].label = e.target.value;
-                                setChoiceOptions(newOpts);
-                              }}
-                              placeholder="Option Label"
-                              className="flex-1 bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
-                            />
-                          </div>
-                          <input 
-                            type="text" 
-                            value={opt.response}
-                            onChange={(e) => {
-                              const newOpts = [...choiceOptions];
-                              newOpts[i].response = e.target.value;
-                              setChoiceOptions(newOpts);
-                            }}
-                            placeholder="Response Message"
-                            className="w-full bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                    <button 
-                      onClick={createChoiceMoment}
-                      className="w-full bg-primary hover:bg-primary/90 text-white py-3 rounded-2xl font-bold transition-colors active:scale-95"
-                    >
-                      ✨ Activate Moment
-                    </button>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        )}
       </motion.div>
     </div>
   );
