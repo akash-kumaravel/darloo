@@ -467,3 +467,5 @@ export default function GiftSystem({ totalStars }: GiftSystemProps) {
         )}
       </AnimatePresence>
     </div>
+  );
+}
