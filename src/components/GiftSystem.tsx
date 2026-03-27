@@ -41,7 +41,8 @@ interface GiftSystemProps {
 export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCount, onClose }: GiftSystemProps) {
   const [revealingGiftSet, setRevealingGiftSet] = useState<GiftSet | null>(null);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
-  const [revealPhase, setRevealPhase] = useState<'idle' | 'flipping' | 'won' | 'revealing' | 'revealOthers' | 'complete'>('idle');
+  const [revealPhase, setRevealPhase] = useState<'idle' | 'flipping' | 'revealOthers' | 'complete'>('idle');
+  const [revealedCards, setRevealedCards] = useState<number[]>([]);
 
   useEffect(() => {
     if (activeGiftSet && revealPhase === 'idle') {
@@ -53,6 +54,7 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
     setRevealingGiftSet(activeGiftSet);
     setSelectedOption(null);
     setRevealPhase('idle');
+    setRevealedCards([]);
   };
 
   const handleSelect = async (optionIndex: number) => {
@@ -60,17 +62,35 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
     
     setSelectedOption(optionIndex);
     setRevealPhase('flipping');
+    setRevealedCards([optionIndex]);
 
     // Find the primary option
     const primaryOption = revealingGiftSet.option1.isPrimary ? revealingGiftSet.option1 : 
                          revealingGiftSet.option2.isPrimary ? revealingGiftSet.option2 : 
                          revealingGiftSet.option3;
 
-    // Timing Sequence (Direct)
-    // 1. Flipping starts immediately (1.5s duration)
+    // Timing Sequence
+    // 1. Selected card flips for 1.5s
+    // 2. After flip, reveal other cards one by one with 0.5s delay
+    // 3. Then show complete state
     
-    // 2. Show everything after flip completes
     setTimeout(() => {
+      setRevealPhase('revealOthers');
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#ff4d6d', '#ffd166', '#ffffff']
+      });
+    }, 1500);
+
+    // Reveal remaining cards sequentially
+    setTimeout(() => {
+      setRevealedCards([optionIndex, ...[1, 2, 3].filter(i => i !== optionIndex).slice(0, 1)]);
+    }, 2000);
+
+    setTimeout(() => {
+      setRevealedCards([1, 2, 3]);
       setRevealPhase('complete');
       confetti({
         particleCount: 150,
@@ -78,7 +98,7 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
         origin: { y: 0.6 },
         colors: ['#ff4d6d', '#ffd166', '#ffffff']
       });
-    }, 1500); // Wait for full 1.5s flip
+    }, 2500);
 
     try {
       // Add to collection
@@ -107,7 +127,7 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
 
   const handleClose = () => {
     // Trigger a massive celebratory blast on close
-    const duration = 2 * 1000;
+    const duration = 1.5 * 1000;
     const animationEnd = Date.now() + duration;
     const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 100 };
 
@@ -125,7 +145,11 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
       confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
     }, 250);
 
-    // Close immediately when user clicks
+    // Reset state and close
+    setRevealingGiftSet(null);
+    setSelectedOption(null);
+    setRevealPhase('idle');
+    setRevealedCards([]);
     onClose();
   };
 
@@ -173,7 +197,7 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                   const isSelected = selectedOption === i;
                   const isOther = selectedOption !== null && !isSelected;
                   const displayOpt = getCardContent(i);
-                  const isFlipped = isSelected ? (revealPhase !== 'idle') : (revealPhase === 'revealOthers' || revealPhase === 'complete');
+                  const isFlipped = revealedCards.includes(i);
 
                   if (!displayOpt) return null;
 
@@ -181,36 +205,49 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                     <motion.div
                       key={i}
                       animate={{
-                        scale: isSelected ? 1.2 : isOther ? 0.8 : 1,
-                        y: isSelected ? -60 : 0,
+                        scale: isSelected ? 1.2 : isOther ? 0.85 : 1,
+                        y: isSelected ? -40 : 0,
                         rotateY: isFlipped ? 180 : 0,
-                        z: isSelected ? 200 : 0
+                        z: isSelected ? 200 : 0,
+                        opacity: revealPhase === 'idle' || isFlipped ? 1 : 0.7
                       }}
                       transition={{ 
                         type: "spring",
-                        damping: 20,
-                        stiffness: 100,
-                        rotateY: { duration: 1.5, ease: "easeInOut" }
+                        damping: 25,
+                        stiffness: 120,
+                        rotateY: { 
+                          duration: 0.8, 
+                          ease: "easeInOut"
+                        },
+                        scale: {
+                          type: "spring",
+                          damping: 20,
+                          stiffness: 100
+                        }
                       }}
                       style={{ transformStyle: 'preserve-3d' }}
                       className={cn(
                         "relative aspect-[2/3] w-full",
-                        revealPhase === 'idle' ? "cursor-pointer hover:scale-105 active:scale-95 transition-all" : "cursor-default"
+                        revealPhase === 'idle' ? "cursor-pointer hover:scale-110 active:scale-95 transition-all" : "cursor-default"
                       )}
                       onClick={() => handleSelect(i)}
                     >
                       {/* Card Front (Mystery) */}
                       <div 
-                        className="absolute inset-0 bg-gradient-to-br from-white to-slate-100 rounded-[2.5rem] flex flex-col items-center justify-center gap-8 border-4 border-white shadow-[0_20px_50px_rgba(0,0,0,0.1)]"
+                        className="absolute inset-0 bg-gradient-to-br from-white via-slate-50 to-slate-100 rounded-[2.5rem] flex flex-col items-center justify-center gap-8 border-4 border-white shadow-[0_20px_50px_rgba(0,0,0,0.1)]"
                         style={{ 
                           backfaceVisibility: 'hidden', 
                           WebkitBackfaceVisibility: 'hidden',
                           transform: 'translateZ(1px)'
                         }}
                       >
-                        <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center border border-primary/10">
+                        <motion.div 
+                          animate={{ y: [0, -10, 0] }}
+                          transition={{ duration: 2, repeat: Infinity }}
+                          className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center border border-primary/10"
+                        >
                           <Heart className="w-10 h-10 text-primary animate-pulse" />
-                        </div>
+                        </motion.div>
                         <div className="text-slate-200 font-black text-7xl opacity-30 tracking-tighter uppercase">Love</div>
                       </div>
 
@@ -218,17 +255,21 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                       <div 
                         className={cn(
                           "absolute inset-0 rounded-[2.5rem] flex flex-col items-center p-8 border-4 overflow-hidden shadow-2xl",
-                          isSelected ? "bg-white border-primary" : "bg-white/80 border-slate-200 backdrop-blur-xl"
+                          isSelected ? "bg-white border-primary" : "bg-white/80 border-slate-200"
                         )}
                         style={{ 
                           backfaceVisibility: 'hidden',
                           WebkitBackfaceVisibility: 'hidden',
-                          transform: 'rotateY(180deg) translateZ(1px)',
-                          visibility: isFlipped ? 'visible' : 'hidden'
+                          transform: 'rotateY(180deg) translateZ(1px)'
                         }}
                       >
-                        {revealPhase === 'complete' && (
-                          <>
+                        {isFlipped && (
+                          <motion.div 
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ duration: 0.4, delay: 0.2 }}
+                            className="w-full h-full flex flex-col items-center p-8"
+                          >
                             <div className="w-full aspect-square rounded-3xl overflow-hidden mb-6 shadow-2xl border-2 border-slate-100">
                               <img 
                                 src={displayOpt.image} 
@@ -237,7 +278,7 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                               />
                             </div>
                             
-                            <div className="text-center w-full">
+                            <div className="text-center w-full flex-1 flex flex-col justify-end">
                               <h3 className={cn(
                                 "font-black tracking-tight uppercase leading-none mb-3",
                                 isSelected ? "text-slate-900 text-xl" : "text-slate-700 text-sm"
@@ -246,16 +287,21 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                               </h3>
                               
                               {isSelected ? (
-                                <div className="text-primary font-black text-sm italic leading-relaxed mt-6 px-4 bg-primary/5 py-4 rounded-2xl">
-                                  "{displayOpt.message}"
-                                </div>
+                                <motion.div 
+                                  initial={{ opacity: 0, y: 10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  transition={{ duration: 0.4, delay: 0.4 }}
+                                  className="text-primary font-black text-sm italic leading-relaxed mt-6 px-4 bg-primary/5 py-4 rounded-2xl"
+                                >
+                                  <Typewriter text={displayOpt.message} speed={30} />
+                                </motion.div>
                               ) : (
                                 <p className="text-slate-400 font-medium text-[10px] italic leading-tight mt-4 line-clamp-3">
                                   "{displayOpt.message}"
                                 </p>
                               )}
                             </div>
-                          </>
+                          </motion.div>
                         )}
                       </div>
 
@@ -263,11 +309,11 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                       {isSelected && revealPhase === 'flipping' && (
                         <motion.div
                           animate={{ 
-                            opacity: [0, 1, 0],
-                            scale: [1, 1.3, 1]
+                            opacity: [0, 0.6, 0],
+                            scale: [1, 1.2, 1]
                           }}
-                          transition={{ duration: 1.5, repeat: Infinity }}
-                          className="absolute inset-0 bg-primary/20 blur-[80px] rounded-[2.5rem] -z-10"
+                          transition={{ duration: 0.8, repeat: Infinity }}
+                          className="absolute inset-0 bg-primary/30 blur-[60px] rounded-[2.5rem] -z-10"
                         />
                       )}
                     </motion.div>
@@ -277,35 +323,71 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
 
               {/* Cinematic Overlays */}
               {revealPhase === 'complete' && (
-                <div className="absolute top-12 left-0 right-0 flex flex-col items-center justify-center pointer-events-none z-50">
-                  <div className="text-center space-y-4 bg-white/80 backdrop-blur-xl p-8 rounded-[3rem] border border-white shadow-2xl scale-75 md:scale-100">
-                    <h2 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-tight">
-                      HEY MY DEAR WIFE<br />
-                      <span className="text-primary">YOU YOU WOW! 💖</span>
-                    </h2>
-                    <div className="h-1 w-16 bg-primary mx-auto rounded-full" />
-                    <p className="text-lg md:text-xl font-black text-slate-600 uppercase tracking-[0.3em]">
+                <motion.div 
+                  initial={{ opacity: 0, y: -30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6 }}
+                  className="absolute top-12 left-0 right-0 flex flex-col items-center justify-center pointer-events-none z-50"
+                >
+                  <div className="text-center space-y-4 bg-white/90 backdrop-blur-xl p-8 rounded-[3rem] border border-white shadow-2xl">
+                    <motion.h2 
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.5, delay: 0.2 }}
+                      className="text-3xl md:text-4xl font-black text-slate-900 tracking-tighter leading-tight"
+                    >
+                      HEY MY DEAR
+                      <br />
+                      <span className="text-primary text-xl md:text-3xl">YOU YOU WOW! 💖</span>
+                    </motion.h2>
+                    <motion.div 
+                      initial={{ scaleX: 0 }}
+                      animate={{ scaleX: 1 }}
+                      transition={{ duration: 0.5, delay: 0.4 }}
+                      className="h-1 w-16 bg-primary mx-auto rounded-full origin-left" 
+                    />
+                    <motion.p 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.5, delay: 0.6 }}
+                      className="text-sm md:text-base font-black text-slate-600 uppercase tracking-[0.2em]"
+                    >
                       YOU UNLOCKED: {
-                        (revealingGiftSet.option1.isPrimary ? revealingGiftSet.option1.title : 
-                         revealingGiftSet.option2.isPrimary ? revealingGiftSet.option2.title : 
-                         revealingGiftSet.option3.title).toUpperCase()
+                        (revealingGiftSet?.option1.isPrimary ? revealingGiftSet.option1.title : 
+                         revealingGiftSet?.option2.isPrimary ? revealingGiftSet.option2.title : 
+                         revealingGiftSet?.option3.title)?.toUpperCase()
                       }
-                    </p>
+                    </motion.p>
                   </div>
-                </div>
+                </motion.div>
               )}
 
               {/* Final Action Button */}
               {revealPhase === 'complete' && (
-                <div className="mt-24 w-full max-w-md">
+                <motion.div 
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.3 }}
+                  className="mt-24 w-full max-w-md flex justify-center pointer-events-auto"
+                >
                   <button
                     onClick={handleClose}
-                    className="w-full bg-slate-900 text-white py-8 rounded-[2.5rem] font-black text-xl tracking-[0.5em] uppercase shadow-[0_30px_60px_rgba(15,23,42,0.3)] hover:scale-105 active:scale-95 transition-all relative overflow-hidden group"
+                    className="w-full bg-gradient-to-r from-slate-900 to-slate-800 text-white py-4 px-8 rounded-[2rem] font-black text-lg tracking-[0.3em] uppercase shadow-[0_30px_60px_rgba(15,23,42,0.4)] hover:shadow-[0_40px_80px_rgba(15,23,42,0.5)] hover:scale-105 active:scale-95 transition-all duration-300 relative overflow-hidden group"
                   >
-                    <div className="absolute inset-0 bg-primary/10 translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500" />
-                    <span className="relative z-10">Continue Journey</span>
+                    <motion.div 
+                      className="absolute inset-0 bg-primary/20 translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-700" 
+                    />
+                    <span className="relative z-10 flex items-center justify-center gap-2">
+                      Continue Home
+                      <motion.span
+                        animate={{ x: [0, 5, 0] }}
+                        transition={{ duration: 1.5, repeat: Infinity }}
+                      >
+                        →
+                      </motion.span>
+                    </span>
                   </button>
-                </div>
+                </motion.div>
               )}
       </div>
     </div>
