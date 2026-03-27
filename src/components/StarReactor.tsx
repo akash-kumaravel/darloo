@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Star, Heart, Gift } from 'lucide-react';
+import { Star, Heart, Minus, Gift, Sparkles } from 'lucide-react';
 import { doc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { toast } from 'sonner';
@@ -10,46 +10,31 @@ import { handleFirestoreError, OperationType } from '../lib/firestore-error';
 
 interface StarReactorProps {
   totalStars: number;
+  giftsReceived: number;
+  lastGiftStarCount?: number;
   isAdmin: boolean;
+  isGiftReady?: boolean;
+  onOpenGift?: () => void;
   cooldown?: number;
-  onGiftOpen?: () => void;
 }
 
-export default function StarReactor({ totalStars, isAdmin, cooldown = 500, onGiftOpen }: StarReactorProps) {
+export default function StarReactor({ 
+  totalStars, 
+  giftsReceived, 
+  lastGiftStarCount = 0, 
+  isAdmin, 
+  isGiftReady = false,
+  onOpenGift,
+  cooldown = 500 
+}: StarReactorProps) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [lastClick, setLastClick] = useState(0);
   const [floatingHearts, setFloatingHearts] = useState<{ id: number; x: number; y: number }[]>([]);
-
-  // Calculate stars in current cycle (0-24 = collecting; cycle complete when 0 and totalStars > 0)
-  const starsInCycle = totalStars % 25;
-  const [giftOpenedThisCycle, setGiftOpenedThisCycle] = useState(false);
-  const isGiftReadyToOpen = starsInCycle === 0 && totalStars > 0 && !giftOpenedThisCycle;
-  const currentGiftNumber = Math.floor(totalStars / 25);
-
-  React.useEffect(() => {
-    if (starsInCycle !== 0) {
-      setGiftOpenedThisCycle(false);
-    }
-  }, [starsInCycle]);
 
   const handleGiveStar = async () => {
     const now = Date.now();
     if (now - lastClick < cooldown) {
       toast.error('Wait a moment... ❤️');
-      return;
-    }
-
-    // Gift open mode when exactly on 25-cycle and not opened yet
-    if (isGiftReadyToOpen) {
-      onGiftOpen?.();
-      setGiftOpenedThisCycle(true);
-      toast.success(`Gift #${currentGiftNumber} opening! 🎁`);
-      return;
-    }
-
-    // Only admin can give stars incrementally
-    if (!isAdmin) {
-      toast.error('Only admin can give stars before gift unlock');
       return;
     }
 
@@ -87,6 +72,24 @@ export default function StarReactor({ totalStars, isAdmin, cooldown = 500, onGif
     setTimeout(() => setFloatingHearts(prev => prev.filter(h => !newHearts.includes(h))), 3000);
   };
 
+  const handleReduceStar = async () => {
+    if (!isAdmin) return;
+    if (totalStars <= 0) {
+      toast.error('No stars to reduce! 😅');
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'stats', 'global'), {
+        totalStars: increment(-1)
+      });
+      toast.success('Star Reduced! 📉');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'stats/global');
+      toast.error('Failed to reduce star');
+    }
+  };
+
   return (
     <div className="relative flex flex-col items-center justify-center py-12">
       <AnimatePresence>
@@ -104,78 +107,59 @@ export default function StarReactor({ totalStars, isAdmin, cooldown = 500, onGif
         ))}
       </AnimatePresence>
 
-      <motion.div
-        animate={isAnimating ? { scale: [1, 1.4, 1], rotate: [0, 15, -15, 0] } : {}}
-        transition={{ duration: 0.5 }}
-        className="relative cursor-pointer"
-        onClick={handleGiveStar}
-      >
-        {/* GIFT UNLOCK ANIMATIONS - Only reveal when gift is ready (every 25 stars) */}
-        {isGiftReadyToOpen && (
-          <>
-            {/* Pulsing gift box glow - animated reveal effect */}
-            <motion.div 
-              animate={{ 
-                opacity: [0.3, 0.6, 0.3],
-                scale: [1, 1.15, 1]
-              }}
-              transition={{ duration: 1.5, repeat: Infinity }}
-              className="absolute inset-0 bg-gradient-to-br from-primary via-secondary to-primary blur-2xl rounded-full" 
-            />
-            {/* Shimmer effect for gift */}
-            <motion.div
-              animate={{ 
-                opacity: [0.2, 0.5, 0.2],
-                rotate: [0, 360]
-              }}
-              transition={{ duration: 3, repeat: Infinity }}
-              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent blur-xl rounded-full"
-            />
-          </>
-        )}
-
-        <div className={cn(
-          "relative glass p-8 rounded-full shadow-2xl border-4 transition-all duration-500",
-          isGiftReadyToOpen 
-            ? "border-primary shadow-[0_0_60px_rgba(255,77,109,0.6)]" 
-            : "border-white"
-        )}>
-          {isGiftReadyToOpen ? (
-            /* GIFT BOX - Ready when stars % 25 == 0 */
-            <motion.div
-              animate={{ rotateY: [0, 360] }}
-              transition={{ repeat: Infinity, duration: 4 }}
-              className="w-24 h-24"
-            >
-              <Gift 
-                className="w-24 h-24 text-primary fill-primary drop-shadow-lg" 
+        <motion.div
+          animate={isAnimating ? { scale: [1, 1.4, 1], rotate: [0, 15, -15, 0] } : {}}
+          transition={{ duration: 0.5 }}
+          className="relative cursor-pointer"
+          onClick={isGiftReady ? onOpenGift : (isAdmin ? handleGiveStar : undefined)}
+        >
+          <div className={cn(
+            "absolute inset-0 blur-3xl rounded-full scale-150 transition-all duration-1000",
+            isGiftReady ? "bg-primary/40 animate-pulse" : "bg-primary/20"
+          )} />
+          <div className={cn(
+            "relative glass p-8 rounded-full shadow-2xl border-4 transition-all duration-500",
+            isGiftReady ? "border-primary bg-white" : "border-white"
+          )}>
+            {isGiftReady ? (
+              <motion.div
+                animate={{ 
+                  rotate: [0, -10, 10, -10, 10, 0],
+                  scale: [1, 1.1, 1]
+                }}
+                transition={{ repeat: Infinity, duration: 2 }}
+              >
+                <Gift className="w-24 h-24 text-primary fill-primary/10" />
+              </motion.div>
+            ) : (
+              <Star 
+                className={cn(
+                  "w-24 h-24 transition-all duration-500",
+                  totalStars > 0 ? "text-yellow-400 fill-yellow-400" : "text-slate-200"
+                )} 
               />
-            </motion.div>
-          ) : (
-            /* STAR - Shows while collecting stars (1-24 in cycle) */
-            <Star 
-              className={cn(
-                "w-24 h-24 transition-all duration-500",
-                totalStars > 0 ? "text-yellow-400 fill-yellow-400" : "text-slate-200"
-              )} 
-            />
-          )}
-          
-          {/* Level Badge */}
-          <motion.div
-            animate={{ scale: [1, 1.2, 1] }}
-            transition={{ repeat: Infinity, duration: 2 }}
-            className={cn(
-              "absolute -top-2 -right-2 text-xs font-bold px-3 py-1 rounded-full shadow-lg",
-              isGiftReadyToOpen
-                ? "bg-gradient-to-r from-primary to-secondary text-white"
-                : "bg-primary text-white"
             )}
-          >
-            {isGiftReadyToOpen ? `🎁 GIFT #${currentGiftNumber}!` : `LVL ${Math.floor(totalStars / 10) + 1}`}
-          </motion.div>
-        </div>
-      </motion.div>
+            <motion.div
+              animate={{ scale: [1, 1.2, 1] }}
+              transition={{ repeat: Infinity, duration: 2 }}
+              className="absolute -top-2 -right-2 bg-primary text-white text-[8px] font-black px-3 py-1 rounded-full shadow-lg uppercase tracking-tighter"
+            >
+              Gifts: {giftsReceived || 0}
+            </motion.div>
+          </div>
+        </motion.div>
+
+      {isAdmin && (
+        <motion.button
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          onClick={handleReduceStar}
+          className="mt-4 bg-slate-100 text-slate-400 p-2 rounded-full hover:bg-red-50 hover:text-red-400 transition-all flex items-center gap-2 px-4 border border-transparent hover:border-red-100"
+        >
+          <Minus className="w-4 h-4" />
+          <span className="text-[10px] font-bold uppercase tracking-widest">Reduce Star</span>
+        </motion.button>
+      )}
 
       <div className="mt-8 text-center">
         <motion.div 
@@ -194,19 +178,12 @@ export default function StarReactor({ totalStars, isAdmin, cooldown = 500, onGif
       <div className="w-full max-w-xs mt-8 h-3 bg-white/50 rounded-full overflow-hidden shadow-inner p-0.5">
         <motion.div
           initial={{ width: 0 }}
-          animate={{ width: isGiftReadyToOpen ? "100%" : `${(starsInCycle * 4)}%` }}
-          className={cn(
-            "h-full rounded-full shadow-lg transition-all duration-300",
-            isGiftReadyToOpen
-              ? "bg-gradient-to-r from-primary to-secondary"
-              : "bg-gradient-to-r from-primary to-secondary"
-          )}
+          animate={{ width: `${Math.min(100, ((totalStars - lastGiftStarCount) / 25) * 100)}%` }}
+          className="h-full bg-gradient-to-r from-primary to-secondary rounded-full shadow-lg"
         />
       </div>
       <div className="mt-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-        {isGiftReadyToOpen 
-          ? `🎁 GIFT #${currentGiftNumber} READY! CLICK THE BOX` 
-          : `${25 - starsInCycle} stars until gift #${currentGiftNumber + 1}`}
+        {Math.max(0, 25 - (totalStars - lastGiftStarCount))} stars until next gift
       </div>
     </div>
   );

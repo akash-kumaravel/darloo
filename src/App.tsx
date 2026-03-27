@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { 
+  onAuthStateChanged, 
+  signInAnonymously, 
+  signOut, 
+  User as FirebaseUser 
+} from 'firebase/auth';
+import { 
   doc, 
   getDoc, 
   setDoc as firebaseSetDoc, 
@@ -9,7 +15,7 @@ import {
   orderBy, 
   limit 
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { auth, db } from './firebase';
 import { UserProfile, GameStats, Role } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -25,6 +31,7 @@ import {
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { cn } from './lib/utils';
+import { handleFirestoreError, OperationType } from './lib/firestore-error';
 
 // Components
 import AdminPanel from './components/AdminPanel';
@@ -37,7 +44,7 @@ import Splash from './components/Splash';
 import { MoodProvider } from './context/MoodContext';
 
 export default function App() {
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<GameStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,8 +52,7 @@ export default function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
 
-  // Auth states
-  const [loginStep, setLoginStep] = useState<'select' | 'admin' | 'user'>('select');
+  const [showLoginMode, setShowLoginMode] = useState<'selection' | 'admin' | 'user'>('selection');
   const [adminUser, setAdminUser] = useState('');
   const [adminPass, setAdminPass] = useState('');
   const [userPass, setUserPass] = useState('');
@@ -57,61 +63,52 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Check for saved user session
-    const savedUser = localStorage.getItem('loveverse_user');
-    if (savedUser) {
-      const parsedUser = JSON.parse(savedUser) as UserProfile;
-      setUser(parsedUser);
-      setProfile(parsedUser);
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    if (!user) return;
-
-    const initializeStats = async () => {
-      try {
-        await firebaseSetDoc(doc(db, 'stats', 'global'), {
-          totalStars: 0,
-          level: 1,
-          xp: 0
-        });
-      } catch (e) {
-        toast.error('Failed to initialize stats');
-      }
-    };
-
-    const statsUnsubscribe = onSnapshot(doc(db, 'stats', 'global'), (doc) => {
-      if (doc.exists()) {
-        setStats(doc.data() as GameStats);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setUser(firebaseUser);
+      if (firebaseUser) {
+        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+        if (userDoc.exists()) {
+          setProfile(userDoc.data() as UserProfile);
+        }
       } else {
-        // Initialize stats if not exist
-        initializeStats();
+        setProfile(null);
       }
+      setLoading(false);
     });
 
-    return () => statsUnsubscribe();
-  }, [user]);
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogin = async (role: 'admin' | 'user', name: string) => {
+    try {
+      const { user: firebaseUser } = await signInAnonymously(auth);
+      const newProfile: UserProfile = {
+        uid: firebaseUser.uid,
+        name: name,
+        email: role === 'admin' ? 'admin@loveverse.com' : 'darloo@loveverse.com',
+        role: role,
+        photo: role === 'admin' ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin' : 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop',
+      };
+      await firebaseSetDoc(doc(db, 'users', firebaseUser.uid), newProfile);
+      setProfile(newProfile);
+      toast.success(`Welcome to LOVEVERSE, ${name} ❤️`);
+    } catch (error: any) {
+      if (error.code === 'auth/admin-restricted-operation') {
+        toast.error('Anonymous Auth is disabled. Please enable it in Firebase Console.', {
+          duration: 10000,
+          description: 'Go to Authentication > Sign-in method > Add new provider > Anonymous > Enable'
+        });
+      } else {
+        toast.error('Login failed: ' + (error.message || 'Unknown error'));
+      }
+      console.error(error);
+    }
+  };
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (adminUser === 'Admin' && adminPass === 'Akash@0901') {
-      const adminProfile: UserProfile = {
-        uid: 'admin_user',
-        name: 'Game Master',
-        email: 'admin@loveverse.com',
-        role: 'admin',
-        photo: '',
-      };
-      setProfile(adminProfile);
-      setUser(adminProfile);
-      setIsAdminMode(true);
-      setLoginStep('select');
-      setAdminUser('');
-      setAdminPass('');
-      localStorage.setItem('loveverse_user', JSON.stringify(adminProfile));
-      toast.success('Admin Access Granted 👑');
+      handleLogin('admin', 'Admin');
     } else {
       toast.error('Invalid Credentials');
     }
@@ -120,36 +117,46 @@ export default function App() {
   const handleUserLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (userPass === 'Libii@1109') {
-      const userProfile: UserProfile = {
-        uid: 'user_player',
-        name: 'My Dear Wife',
-        email: 'user@loveverse.com',
-        role: 'user',
-        photo: '',
-      };
-      setProfile(userProfile);
-      setUser(userProfile);
-      setIsAdminMode(false);
-      setLoginStep('select');
-      setUserPass('');
-      localStorage.setItem('loveverse_user', JSON.stringify(userProfile));
-      toast.success('Welcome my dear wife ❤️');
+      handleLogin('user', 'Darloo');
     } else {
       toast.error('Invalid Password');
     }
   };
 
+  useEffect(() => {
+    if (!user) return;
+
+    const initializeStats = async () => {
+      try {
+        await firebaseSetDoc(doc(db, 'stats', 'global'), {
+          totalStars: 0,
+          giftsReceived: 0,
+          lastGiftStarCount: 0
+        });
+      } catch (e) {
+        handleFirestoreError(e, OperationType.WRITE, 'stats/global');
+      }
+    };
+
+    const statsUnsubscribe = onSnapshot(doc(db, 'stats', 'global'), (doc) => {
+      if (doc.exists()) {
+        setStats(doc.data() as GameStats);
+      } else {
+        initializeStats();
+      }
+    });
+
+    return () => statsUnsubscribe();
+  }, [user]);
+
   const handleLogout = () => {
-    setUser(null);
-    setProfile(null);
+    signOut(auth);
     setIsAdminMode(false);
     setActiveTab('home');
-    setLoginStep('select');
+    setShowLoginMode('selection');
     setAdminUser('');
     setAdminPass('');
     setUserPass('');
-    localStorage.removeItem('loveverse_user');
-    toast.success('Logged out');
   };
 
   if (showSplash) return <Splash />;
@@ -177,102 +184,115 @@ export default function App() {
           <p className="text-slate-500 mt-2 font-medium">A Private Cinematic Love Game</p>
         </motion.div>
 
-        {loginStep === 'select' ? (
+        {showLoginMode === 'selection' ? (
           <div className="w-full max-w-xs space-y-4">
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => setLoginStep('admin')}
-              className="w-full glass py-4 rounded-2xl flex items-center justify-center gap-3 font-bold text-slate-700 hover:bg-white transition-all"
+              onClick={() => setShowLoginMode('user')}
+              className="w-full glass py-6 rounded-3xl flex flex-col items-center justify-center gap-2 font-bold text-slate-700 hover:bg-white transition-all group"
             >
-              <Lock className="w-6 h-6 text-primary" />
-              Game Master
+              <Heart className="w-8 h-8 text-primary group-hover:fill-primary transition-all" />
+              <span className="text-lg">Enter as Darloo</span>
             </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setLoginStep('user')}
-              className="w-full glass py-4 rounded-2xl flex items-center justify-center gap-3 font-bold text-slate-700 hover:bg-white transition-all"
+            
+            <button 
+              onClick={() => setShowLoginMode('admin')}
+              className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-primary transition-colors"
             >
-              <UserIcon className="w-6 h-6 text-primary" />
-              My Dear Wife
-            </motion.button>
+              Admin Access
+            </button>
           </div>
-        ) : loginStep === 'admin' ? (
+        ) : showLoginMode === 'admin' ? (
           <motion.form 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             onSubmit={handleAdminLogin}
-            className="w-full max-w-xs glass p-6 rounded-3xl space-y-4"
+            className="w-full max-w-xs glass p-8 rounded-[2.5rem] space-y-4 border-2 border-white/20 shadow-2xl"
           >
-            <div className="text-sm font-black text-primary uppercase tracking-widest mb-4">Game Master Login</div>
-            <input 
-              type="text" 
-              placeholder="Username" 
-              value={adminUser}
-              onChange={(e) => setAdminUser(e.target.value)}
-              className="w-full bg-white/50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 ring-primary text-sm"
-              autoFocus
-            />
-            <input 
-              type="password" 
-              placeholder="Password" 
-              value={adminPass}
-              onChange={(e) => setAdminPass(e.target.value)}
-              className="w-full bg-white/50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 ring-primary text-sm"
-            />
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Lock className="w-8 h-8 text-primary" />
+              </div>
+              <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Game Master</h2>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Enter Credentials</p>
+            </div>
+
+            <div className="space-y-3">
+              <input 
+                type="text" 
+                placeholder="Username" 
+                value={adminUser}
+                onChange={(e) => setAdminUser(e.target.value)}
+                className="w-full bg-white/50 border-2 border-transparent rounded-2xl px-5 py-4 outline-none focus:border-primary/30 focus:bg-white transition-all text-sm font-medium"
+              />
+              <input 
+                type="password" 
+                placeholder="Password" 
+                value={adminPass}
+                onChange={(e) => setAdminPass(e.target.value)}
+                className="w-full bg-white/50 border-2 border-transparent rounded-2xl px-5 py-4 outline-none focus:border-primary/30 focus:bg-white transition-all text-sm font-medium"
+              />
+            </div>
+
             <button 
               type="submit"
-              className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg shadow-primary/20"
+              className="w-full bg-primary text-white py-4 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all mt-4"
             >
               Unlock Vault
             </button>
+            
             <button 
               type="button"
-              onClick={() => {
-                setLoginStep('select');
-                setAdminUser('');
-                setAdminPass('');
-              }}
-              className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600"
+              onClick={() => setShowLoginMode('selection')}
+              className="w-full text-xs font-bold text-slate-400 uppercase tracking-widest py-2"
             >
               Back
             </button>
           </motion.form>
-        ) : loginStep === 'user' ? (
+        ) : (
           <motion.form 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             onSubmit={handleUserLogin}
-            className="w-full max-w-xs glass p-6 rounded-3xl space-y-4"
+            className="w-full max-w-xs glass p-8 rounded-[2.5rem] space-y-6 border-2 border-white/20 shadow-2xl"
           >
-            <div className="text-sm font-black text-primary uppercase tracking-widest mb-4">Welcome my dear wife</div>
+            <div className="text-center">
+              <motion.div 
+                animate={{ scale: [1, 1.1, 1] }}
+                transition={{ repeat: Infinity, duration: 3 }}
+                className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6"
+              >
+                <Heart className="w-10 h-10 text-primary fill-primary/20" />
+              </motion.div>
+              <h2 className="text-2xl font-black text-slate-800 tracking-tighter mb-1">WELCOME MY DEAR WIFE</h2>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Enter your secret password</p>
+            </div>
+
             <input 
               type="password" 
-              placeholder="Enter Password" 
+              placeholder="Your Secret Password" 
               value={userPass}
               onChange={(e) => setUserPass(e.target.value)}
-              className="w-full bg-white/50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 ring-primary text-sm"
-              autoFocus
+              className="w-full bg-white/50 border-2 border-transparent rounded-2xl px-5 py-4 outline-none focus:border-primary/30 focus:bg-white transition-all text-sm font-medium text-center tracking-[0.5em]"
             />
+
             <button 
               type="submit"
-              className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg shadow-primary/20"
+              className="w-full bg-primary text-white py-4 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
             >
-              Enter
+              Enter Loveverse
             </button>
+            
             <button 
               type="button"
-              onClick={() => {
-                setLoginStep('select');
-                setUserPass('');
-              }}
-              className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600"
+              onClick={() => setShowLoginMode('selection')}
+              className="w-full text-xs font-bold text-slate-400 uppercase tracking-widest py-2"
             >
               Back
             </button>
           </motion.form>
-        ) : null}
+        )}
 
         <div className="mt-8 text-xs text-slate-400 uppercase tracking-widest font-bold">
           For Two Hearts Only
@@ -336,7 +356,12 @@ export default function App() {
             >
               <div className="glass rounded-3xl p-8 text-center">
                 <div className="relative inline-block">
-                  <img src={profile?.photo} alt={profile?.name} className="w-24 h-24 rounded-full border-4 border-white shadow-xl mx-auto" />
+                  <img 
+                    src={profile?.role === 'user' ? 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop' : (profile?.photo || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin')} 
+                    alt={profile?.name} 
+                    className="w-24 h-24 rounded-full border-4 border-white shadow-xl mx-auto object-cover" 
+                    referrerPolicy="no-referrer"
+                  />
                   <div className="absolute bottom-0 right-0 bg-primary p-2 rounded-full shadow-lg">
                     <Heart className="w-4 h-4 text-white fill-white" />
                   </div>

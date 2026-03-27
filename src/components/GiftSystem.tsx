@@ -1,34 +1,21 @@
-import { cn } from '../lib/utils';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Lock, Gift, Sparkles, ChevronRight, Heart } from 'lucide-react';
+import { Heart } from 'lucide-react';
 import { 
   collection, 
-  query, 
-  where, 
-  onSnapshot, 
   doc, 
   updateDoc, 
   addDoc,
-  orderBy,
-  limit
+  increment
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { GiftSet, GiftOption } from '../types';
-import { toast } from 'sonner';
-import confetti from 'canvas-confetti';
+import { GiftSet } from '../types';
+import { cn } from '../lib/utils';
 import { handleFirestoreError, OperationType } from '../lib/firestore-error';
+import confetti from 'canvas-confetti';
+import { toast } from 'sonner';
 
-interface GiftSystemProps {
-  totalStars: number;
-  giftOpenRequest?: boolean;
-  onGiftOpened?: () => void;
-}
-
-type RevealPhase = 'idle' | 'flipping' | 'won' | 'revealing' | 'revealOthers' | 'complete';
-
-// Typewriter Component
-const Typewriter = ({ text, speed = 50, onComplete }: { text: string; speed?: number; onComplete?: () => void }) => {
+const Typewriter = ({ text, speed = 40 }: { text: string; speed?: number }) => {
   const [displayedText, setDisplayedText] = useState('');
   
   useEffect(() => {
@@ -36,390 +23,276 @@ const Typewriter = ({ text, speed = 50, onComplete }: { text: string; speed?: nu
     const timer = setInterval(() => {
       setDisplayedText(text.slice(0, i + 1));
       i++;
-      if (i >= text.length) {
-        clearInterval(timer);
-        onComplete?.();
-      }
+      if (i >= text.length) clearInterval(timer);
     }, speed);
     return () => clearInterval(timer);
-  }, [text, speed, onComplete]);
+  }, [text, speed]);
 
   return <span>{displayedText}</span>;
 };
 
-export default function GiftSystem({ totalStars, giftOpenRequest = false, onGiftOpened }: GiftSystemProps) {
-  const [activeGiftSet, setActiveGiftSet] = useState<GiftSet | null>(null);
-  const [showUnlock, setShowUnlock] = useState(false);
+interface GiftSystemProps {
+  activeGiftSet: GiftSet;
+  totalStars: number;
+  lastGiftStarCount: number;
+  onClose: () => void;
+}
+
+export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCount, onClose }: GiftSystemProps) {
+  const [revealingGiftSet, setRevealingGiftSet] = useState<GiftSet | null>(null);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
-  const [revealPhase, setRevealPhase] = useState<RevealPhase>('idle');
-  const [isLocked, setIsLocked] = useState(false);
-
-  // Calculate if gift is ready (every 25 stars: 25, 50, 75, etc.)
-  const starsInCycle = totalStars % 25;
-  const isGiftReady = starsInCycle === 0 && totalStars > 0;
+  const [revealPhase, setRevealPhase] = useState<'idle' | 'flipping' | 'won' | 'revealing' | 'revealOthers' | 'complete'>('idle');
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'giftSets'), 
-      where('unlocked', '==', false),
-      orderBy('createdAt', 'desc'),
-      limit(1)
-    );
-
-    const unsubscribe = onSnapshot(q, (snap) => {
-      if (!snap.empty) {
-        const data = { id: snap.docs[0].id, ...snap.docs[0].data() } as GiftSet;
-        setActiveGiftSet(data);
-      } else {
-        setActiveGiftSet(null);
-      }
-    }, (error) => {
-      console.error('Gift sets snapshot error:', error);
-      handleFirestoreError(error, OperationType.GET, 'giftSets');
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  const isUnlockable = isGiftReady && activeGiftSet;
-
-  useEffect(() => {
-    if (giftOpenRequest && isUnlockable && !showUnlock) {
+    if (activeGiftSet && revealPhase === 'idle') {
       handleUnlock();
-      onGiftOpened?.();
     }
-  }, [giftOpenRequest, isUnlockable, showUnlock, onGiftOpened]);
+  }, [activeGiftSet]);
 
   const handleUnlock = () => {
-    if (!isUnlockable) return;
-    setShowUnlock(true);
-    setRevealPhase('idle');
+    setRevealingGiftSet(activeGiftSet);
     setSelectedOption(null);
+    setRevealPhase('idle');
   };
 
   const handleSelect = async (optionIndex: number) => {
-    if (!activeGiftSet || selectedOption !== null || isLocked) return;
+    if (!revealingGiftSet || selectedOption !== null) return;
     
-    // LOCK SELECTION - disable all interactions
-    setIsLocked(true);
     setSelectedOption(optionIndex);
     setRevealPhase('flipping');
 
-    const option = optionIndex === 1 ? activeGiftSet.option1 : 
-                   optionIndex === 2 ? activeGiftSet.option2 : 
-                   activeGiftSet.option3;
+    // Find the primary option
+    const primaryOption = revealingGiftSet.option1.isPrimary ? revealingGiftSet.option1 : 
+                         revealingGiftSet.option2.isPrimary ? revealingGiftSet.option2 : 
+                         revealingGiftSet.option3;
 
-    // PHASE TIMING SEQUENCE (strict order)
-    // Phase 1: SLOW CARD FLIP (1.5s) - starts immediately
+    // Timing Sequence (Cinematic)
+    // 1. Flipping starts immediately (1.5s duration)
     
-    // Phase 2: WIN ANNOUNCEMENT (occurs after flip at 1.5s, displays for 1s)
+    // 2. Show "Won" announcement after flip completes
     setTimeout(() => {
       setRevealPhase('won');
-      
-      // CONFETTI BURST - Emotional celebration
       confetti({
-        particleCount: 120,
-        spread: 80,
-        origin: { y: 0.5, x: 0.5 },
-        colors: ['#ff4d6d', '#ffd166', '#ffffff', '#ff758f'],
-        gravity: 0.8,
-        scalar: 1.2
+        particleCount: 150,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#ff4d6d', '#ffd166', '#ffffff']
       });
-    }, 1500);
+    }, 1500); // Wait for full 1.5s flip
 
-    // Phase 3: GIFT CONTENT REVEAL (at 2.5s, typewriter begins)
+    // 3. Reveal gift content (image + typewriter message)
     setTimeout(() => {
       setRevealPhase('revealing');
     }, 2500);
 
-    // Phase 4: REVEAL REMAINING TWO CARDS (at 4s, automatically flip other cards)
+    // 4. Reveal other two cards (dimmed)
     setTimeout(() => {
       setRevealPhase('revealOthers');
-    }, 4000);
+    }, 4500);
 
-    // Phase 5: COMPLETE & UNLOCK INTERACTIONS (at 5.5s)
+    // 5. Final state (show close button)
     setTimeout(() => {
       setRevealPhase('complete');
-      setIsLocked(false);
-    }, 5500);
+    }, 6000);
 
     try {
       // Add to collection
-      const path = 'collection';
-      await addDoc(collection(db, path), {
+      await addDoc(collection(db, 'collection'), {
         userId: auth.currentUser?.uid,
-        title: option.title,
-        message: option.message,
-        image: option.image,
+        title: primaryOption.title,
+        message: primaryOption.message,
+        image: primaryOption.image,
         date: new Date().toISOString()
       });
 
-      // Mark gift set as unlocked
-      await updateDoc(doc(db, 'giftSets', activeGiftSet.id), {
+      // Mark gift set as unlocked and increment gifts received
+      await updateDoc(doc(db, 'giftSets', revealingGiftSet.id), {
         unlocked: true
+      });
+
+      await updateDoc(doc(db, 'stats', 'global'), {
+        giftsReceived: increment(1),
+        lastGiftStarCount: totalStars
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'giftSets/collection');
       toast.error('Failed to save gift to scrapbook');
-      setIsLocked(false);
     }
   };
 
   const handleClose = () => {
-    setShowUnlock(false);
-    setSelectedOption(null);
-    setRevealPhase('idle');
-    setIsLocked(false);
-    onGiftOpened?.();
+    // Trigger a massive celebratory blast on close
+    const duration = 3 * 1000;
+    const animationEnd = Date.now() + duration;
+    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 100 };
+
+    const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min;
+
+    const interval: any = setInterval(function() {
+      const timeLeft = animationEnd - Date.now();
+
+      if (timeLeft <= 0) {
+        return clearInterval(interval);
+      }
+
+      const particleCount = 50 * (timeLeft / duration);
+      confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } });
+      confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
+    }, 250);
+
+    // Close after a short delay to allow the blast to start
+    setTimeout(onClose, 500);
   };
 
-  if (!activeGiftSet && !isGiftReady) return null;
+  if (!activeGiftSet && !revealingGiftSet && totalStars < lastGiftStarCount + 25) return null;
+
+  // Helper to get card content based on selection
+  const getCardContent = (cardIndex: number) => {
+    if (!revealingGiftSet) return null;
+    
+    const primaryOption = revealingGiftSet.option1.isPrimary ? revealingGiftSet.option1 : 
+                         revealingGiftSet.option2.isPrimary ? revealingGiftSet.option2 : 
+                         revealingGiftSet.option3;
+    
+    const secondaryOptions = [revealingGiftSet.option1, revealingGiftSet.option2, revealingGiftSet.option3].filter(o => !o.isPrimary);
+
+    if (selectedOption === cardIndex) {
+      return primaryOption;
+    } else {
+      // Map the other two cards to the secondary options
+      const otherCardIndices = [1, 2, 3].filter(idx => idx !== selectedOption);
+      const secondaryIndex = otherCardIndices.indexOf(cardIndex);
+      return secondaryOptions[secondaryIndex] || secondaryOptions[0];
+    }
+  };
 
   return (
-    <div className="space-y-3">
-      <motion.div
-        whileHover={isUnlockable ? { scale: 1.05 } : {}}
-        whileTap={isUnlockable ? { scale: 0.98 } : {}}
-        onClick={handleUnlock}
-        className={cn(
-          "flex items-center gap-4",
-          isUnlockable ? "cursor-pointer" : "opacity-80"
-        )}
-      >
-        {isUnlockable && (
-          <>
-            {/* Animated outer glow */}
-            <motion.div
-              animate={{ opacity: [0.2, 0.5, 0.2], scale: [1, 1.1, 1] }}
-              transition={{ repeat: Infinity, duration: 2 }}
-              className="absolute inset-0 rounded-2xl bg-gradient-to-r from-primary/0 via-primary/30 to-primary/0 -skew-x-12"
-            />
-            {/* Shimmer effect */}
-            <motion.div
-              animate={{ opacity: [0.1, 0.3, 0.1] }}
-              transition={{ repeat: Infinity, duration: 2 }}
-              className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/20 to-transparent -skew-x-12 translate-x-[-100%] animate-[shimmer_2s_infinite]"
-            />
-          </>
-        )}
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0, scale: 1.1, filter: 'blur(20px)' }}
+      className="fixed inset-0 z-[60] bg-slate-50/95 backdrop-blur-3xl flex flex-col items-center justify-center p-6 overflow-hidden"
+    >
+      <div className="w-full max-w-5xl flex flex-col items-center relative z-10">
+              <AnimatePresence mode="wait">
+                {revealPhase === 'idle' && (
+                  <motion.div
+                    key="header-idle"
+                    initial={{ y: -20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: -20, opacity: 0 }}
+                    className="text-center mb-16"
+                  >
+                    <h2 className="text-6xl font-black text-slate-900 tracking-tighter mb-4 drop-shadow-sm">PICK YOUR DESTINY</h2>
+                    <p className="text-primary font-black uppercase tracking-[0.6em] text-xs animate-pulse">Choose one mystery card</p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-        <div className={cn(
-          "w-12 h-12 rounded-xl flex items-center justify-center shadow-lg shrink-0 relative",
-          isUnlockable ? "bg-gradient-to-br from-primary to-secondary text-white" : "bg-slate-100 text-slate-400"
-        )}>
-          {isUnlockable && (
-            <motion.div
-              animate={{ scale: [1, 1.2, 1] }}
-              transition={{ repeat: Infinity, duration: 1.5 }}
-              className="absolute inset-0 bg-primary/20 rounded-xl blur-lg"
-            />
-          )}
-          <motion.div animate={isUnlockable ? { rotateY: [0, 360] } : {}} transition={{ repeat: Infinity, duration: 3 }} className="relative z-10">
-            {isUnlockable ? <Gift className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
-          </motion.div>
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="font-black text-slate-800 text-sm tracking-tight truncate">
-            {isUnlockable ? 'SURPRISE UNLOCKED!' : 'MYSTERY GIFT'}
-          </div>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
-            {isUnlockable ? '✨ TAP TO OPEN YOUR GIFT ✨' : `${25 - starsInCycle} stars to next gift`}
-          </div>
-        </div>
-
-        {isUnlockable && (
-          <motion.div
-            animate={{ x: [0, 6, 0] }}
-            transition={{ repeat: Infinity, duration: 1 }}
-          >
-            <ChevronRight className="w-5 h-5 text-primary shrink-0" />
-          </motion.div>
-        )}
-      </motion.div>
-
-      {/* Unlock Cinematic Modal */}
-      <AnimatePresence>
-        {showUnlock && activeGiftSet && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center p-6 overflow-hidden"
-          >
-            {/* BACKGROUND DIMMING - Progressive effect during reveal */}
-            <motion.div 
-              animate={{ 
-                opacity: selectedOption !== null ? 0.85 : 0,
-                backdropFilter: selectedOption !== null ? 'blur(8px)' : 'blur(0px)'
-              }}
-              transition={{ duration: 0.8, ease: 'easeInOut' }}
-              className="absolute inset-0 bg-black pointer-events-none z-0"
-            />
-
-            <div className="w-full max-w-2xl flex flex-col items-center relative z-10">
-              {/* HEADING - Only show during idle phase */}
-              {revealPhase === 'idle' && (
-                <motion.div
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  exit={{ y: -20, opacity: 0 }}
-                  className="text-center mb-12"
-                >
-                  <h2 className="text-4xl font-black text-white tracking-tighter mb-2">PICK YOUR DESTINY</h2>
-                  <p className="text-primary font-bold uppercase tracking-[0.3em] text-xs">Choose one mystery card</p>
-                </motion.div>
-              )}
-
-              {/* CARD GRID */}
-              <div className="grid grid-cols-3 gap-6 w-full" style={{ perspective: '1200px' }}>
+              {/* Card Grid */}
+              <div className="grid grid-cols-3 gap-12 w-full perspective-2000">
                 {[1, 2, 3].map((i) => {
                   const isSelected = selectedOption === i;
                   const isOther = selectedOption !== null && !isSelected;
-                  const opt = i === 1 ? activeGiftSet.option1 : i === 2 ? activeGiftSet.option2 : activeGiftSet.option3;
-                  
-                  // FLIP LOGIC: Selected card flips during flipping phase
-                  // Non-selected cards flip during revealOthers/complete phases
-                  const isFlipped = isSelected 
-                    ? (revealPhase !== 'idle') 
-                    : (revealPhase === 'revealOthers' || revealPhase === 'complete');
+                  const displayOpt = getCardContent(i);
+                  const isFlipped = isSelected ? (revealPhase !== 'idle') : (revealPhase === 'revealOthers' || revealPhase === 'complete');
+
+                  if (!displayOpt) return null;
 
                   return (
                     <motion.div
                       key={i}
                       animate={{
-                        scale: isSelected && revealPhase !== 'idle' ? 1.15 : isOther && revealPhase !== 'revealOthers' && revealPhase !== 'complete' ? 0.8 : 1,
-                        opacity: isOther && revealPhase !== 'revealOthers' && revealPhase !== 'complete' ? 0.2 : 1,
-                        y: isSelected && revealPhase !== 'idle' ? -50 : 0,
+                        scale: isSelected ? 1.2 : isOther ? 0.8 : 1,
+                        opacity: isOther && revealPhase !== 'revealOthers' && revealPhase !== 'complete' ? 0.3 : 1,
+                        y: isSelected ? -60 : 0,
                         rotateY: isFlipped ? 180 : 0,
-                        zIndex: isSelected ? 10 : 1
+                        z: isSelected ? 200 : 0
                       }}
                       transition={{ 
-                        duration: isFlipped && isOther ? 1.2 : isFlipped && isSelected ? 1.8 : 0.6,
-                        ease: isFlipped ? "easeInOut" : "easeOut",
-                        rotateY: { duration: isFlipped && isSelected ? 1.8 : 1.2 }
+                        type: "spring",
+                        damping: 20,
+                        stiffness: 100,
+                        rotateY: { duration: 1.5, ease: "easeInOut" }
                       }}
                       style={{ transformStyle: 'preserve-3d' }}
                       className={cn(
-                        "relative aspect-[2/3] cursor-pointer transition-all",
-                        !isLocked && revealPhase === 'idle' ? 'cursor-pointer hover:scale-110' : 'cursor-not-allowed'
+                        "relative aspect-[2/3] w-full",
+                        revealPhase === 'idle' ? "cursor-pointer hover:scale-105 active:scale-95 transition-all" : "cursor-default"
                       )}
-                      onClick={() => !isLocked && revealPhase === 'idle' && handleSelect(i)}
+                      onClick={() => handleSelect(i)}
                     >
-                      {/* CARD FRONT (Mystery) */}
+                      {/* Card Front (Mystery) */}
                       <div 
-                        className="absolute inset-0 glass rounded-3xl flex flex-col items-center justify-center gap-4 border-2 border-white/20 backface-hidden shadow-2xl backdrop-blur-md"
-                        style={{ backfaceVisibility: 'hidden' }}
+                        className="absolute inset-0 bg-gradient-to-br from-white to-slate-100 rounded-[2.5rem] flex flex-col items-center justify-center gap-8 border-4 border-white shadow-[0_20px_50px_rgba(0,0,0,0.1)]"
+                        style={{ 
+                          backfaceVisibility: 'hidden', 
+                          WebkitBackfaceVisibility: 'hidden',
+                          transform: 'translateZ(2px)'
+                        }}
                       >
-                        {/* Glow pulse */}
-                        <motion.div
-                          animate={{ opacity: [0.3, 0.6, 0.3] }}
-                          transition={{ duration: 2, repeat: Infinity }}
-                          className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent rounded-3xl"
-                        />
-                        
-                        <div className="w-14 h-14 bg-white/10 rounded-full flex items-center justify-center relative z-10 border border-white/20">
-                          <motion.div
-                            animate={{ scale: [1, 1.1, 1] }}
-                            transition={{ duration: 1.5, repeat: Infinity }}
-                          >
-                            <Heart className="w-7 h-7 text-white/60" />
-                          </motion.div>
+                        <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center border border-primary/10">
+                          <Heart className="w-10 h-10 text-primary animate-pulse" />
                         </div>
-                        <motion.div 
-                          animate={{ scale: [1, 1.2, 1], opacity: [0.4, 0.8, 0.4] }}
-                          transition={{ duration: 2, repeat: Infinity }}
-                          className="text-white font-black text-5xl opacity-20 relative z-10"
-                        >
-                          ?
-                        </motion.div>
-                        {revealPhase === 'idle' && (
-                          <motion.p
-                            animate={{ opacity: [0.5, 1, 0.5] }}
-                            transition={{ duration: 1, repeat: Infinity }}
-                            className="text-white/70 text-xs font-bold uppercase tracking-widest absolute bottom-6"
-                          >
-                            Tap to reveal
-                          </motion.p>
-                        )}
+                        <div className="text-slate-200 font-black text-7xl opacity-30 tracking-tighter uppercase">Love</div>
                       </div>
 
-                      {/* CARD BACK (Revealed) */}
+                      {/* Card Back (Revealed) */}
                       <div 
                         className={cn(
-                          "absolute inset-0 rounded-3xl flex flex-col items-center justify-start p-5 border-2 overflow-hidden shadow-2xl",
-                          isSelected 
-                            ? "bg-gradient-to-br from-white via-white to-primary/5 border-white shadow-[0_0_80px_rgba(255,77,109,0.5)]" 
-                            : "bg-white/15 border-white/30 backdrop-blur-sm"
+                          "absolute inset-0 rounded-[2.5rem] flex flex-col items-center p-8 border-4 overflow-hidden shadow-2xl",
+                          isSelected ? "bg-white border-primary" : "bg-white/80 border-slate-200 backdrop-blur-xl"
                         )}
                         style={{ 
                           backfaceVisibility: 'hidden',
-                          transform: 'rotateY(180deg)'
+                          WebkitBackfaceVisibility: 'hidden',
+                          transform: 'rotateY(180deg) translateZ(2px)'
                         }}
                       >
-                        {/* GIFT IMAGE */}
-                        <motion.img 
-                          src={opt.image} 
-                          alt={opt.title} 
-                          className="w-full aspect-square rounded-2xl object-cover shadow-lg"
+                        <motion.div
                           initial={{ opacity: 0, scale: 0.8 }}
-                          animate={{ 
-                            opacity: isSelected ? 1 : 0.7, 
-                            scale: 1 
-                          }}
-                          transition={{ delay: isSelected ? 2.0 : revealPhase === 'revealOthers' ? 4.2 : 0, duration: 1 }}
-                        />
-
-                        {/* GIFT TITLE & MESSAGE */}
-                        <div className="text-center flex-1 flex flex-col justify-between w-full mt-4">
-                          <motion.h3
-                            className={cn(
-                              "font-black tracking-tight uppercase leading-none mb-2",
-                              isSelected ? "text-slate-900 text-base" : "text-white text-xs"
-                            )}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ delay: isSelected ? 2.0 : revealPhase === 'revealOthers' ? 4.2 : 0 }}
-                          >
-                            {opt.title}
-                          </motion.h3>
-
-                          {/* MESSAGE DISPLAY - Only show when appropriate */}
-                          <AnimatePresence>
-                            {(
-                              (isSelected && (revealPhase === 'revealing' || revealPhase === 'revealOthers' || revealPhase === 'complete')) ||
-                              (!isSelected && (revealPhase === 'revealOthers' || revealPhase === 'complete'))
-                            ) && (
-                              <motion.div
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0 }}
-                                transition={{ duration: 0.6 }}
-                                className={cn(
-                                  "text-[11px] font-medium leading-tight italic",
-                                  isSelected ? "text-primary" : "text-white/70"
-                                )}
-                              >
-                                {isSelected ? (
-                                  <Typewriter text={opt.message} speed={40} />
-                                ) : (
-                                  opt.message
-                                )}
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
+                          animate={isFlipped ? { opacity: 1, scale: 1 } : {}}
+                          transition={{ delay: 1.5, duration: 0.8 }}
+                          className="w-full aspect-square rounded-3xl overflow-hidden mb-6 shadow-2xl border-2 border-slate-100"
+                        >
+                          <img 
+                            src={displayOpt.image} 
+                            alt={displayOpt.title} 
+                            className="w-full h-full object-cover" 
+                          />
+                        </motion.div>
+                        
+                        <div className="text-center w-full">
+                          <h3 className={cn(
+                            "font-black tracking-tight uppercase leading-none mb-3",
+                            isSelected ? "text-slate-900 text-xl" : "text-slate-700 text-sm"
+                          )}>
+                            {displayOpt.title}
+                          </h3>
+                          
+                          {isSelected && (revealPhase === 'revealing' || revealPhase === 'revealOthers' || revealPhase === 'complete') && (
+                            <div className="text-primary font-black text-sm italic leading-relaxed mt-6 px-4 bg-primary/5 py-4 rounded-2xl">
+                              <Typewriter text={`"${displayOpt.message}"`} />
+                            </div>
+                          )}
+                          
+                          {!isSelected && (revealPhase === 'revealOthers' || revealPhase === 'complete') && (
+                            <p className="text-slate-400 font-medium text-[10px] italic leading-tight mt-4 line-clamp-3">
+                              "{displayOpt.message}"
+                            </p>
+                          )}
                         </div>
                       </div>
 
-                      {/* GLOW EFFECT during selected card flip */}
+                      {/* Cinematic Glow during flip */}
                       {isSelected && revealPhase === 'flipping' && (
                         <motion.div
                           animate={{ 
-                            opacity: [0.2, 0.5, 0.2],
-                            scale: [1, 1.05, 1]
+                            opacity: [0, 1, 0],
+                            scale: [1, 1.3, 1]
                           }}
-                          transition={{ duration: 1.8, repeat: 1 }}
-                          className="absolute inset-0 bg-gradient-to-br from-primary/40 via-primary/20 to-transparent blur-3xl rounded-3xl pointer-events-none"
+                          transition={{ duration: 1.5, repeat: Infinity }}
+                          className="absolute inset-0 bg-primary/20 blur-[80px] rounded-[2.5rem] -z-10"
                         />
                       )}
                     </motion.div>
@@ -427,124 +300,60 @@ export default function GiftSystem({ totalStars, giftOpenRequest = false, onGift
                 })}
               </div>
 
-              {/* WIN ANNOUNCEMENT OVERLAY */}
+              {/* Cinematic Overlays */}
               <AnimatePresence>
-                {(revealPhase === 'won' || revealPhase === 'revealing') && (
+                {revealPhase === 'won' && (
                   <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0, scale: 1.2 }}
-                    transition={{ duration: 0.5 }}
-                    className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-20"
+                    initial={{ opacity: 0, scale: 0.5, y: -100 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 1.5, filter: "blur(40px)" }}
+                    transition={{ type: "spring", damping: 15, stiffness: 100 }}
+                    className="absolute top-12 left-0 right-0 flex flex-col items-center justify-center pointer-events-none z-50"
                   >
-                    {/* ANIMATED CELEBRATION TEXT */}
-                    <motion.div
-                      initial={{ scale: 0.5, opacity: 0, y: 30 }}
-                      animate={{ scale: 1, opacity: 1, y: 0 }}
-                      exit={{ scale: 1.2, opacity: 0, y: -30 }}
-                      transition={{ duration: 0.8, ease: 'easeOut', type: 'spring', stiffness: 100 }}
-                      className="text-center relative"
-                    >
-                      {/* Multiple glowing layers */}
-                      <motion.div
+                    <div className="text-center space-y-4 bg-white/80 backdrop-blur-xl p-8 rounded-[3rem] border border-white shadow-2xl scale-75 md:scale-100">
+                      <motion.h2 
                         animate={{ 
-                          scale: [0.8, 1.4, 0.8],
-                          opacity: [0.3, 0.1, 0.3]
+                          scale: [1, 1.05, 1],
+                          textShadow: ["0 0 0px rgba(255,77,109,0)", "0 0 50px rgba(255,77,109,0.3)", "0 0 0px rgba(255,77,109,0)"]
                         }}
                         transition={{ duration: 2, repeat: Infinity }}
-                        className="absolute inset-0 bg-gradient-to-t from-primary/60 via-primary/40 to-primary/20 blur-3xl rounded-full -z-10 w-96 h-96 -translate-x-24"
-                      />
-                      <motion.div
-                        animate={{ 
-                          scale: [1, 1.3, 1],
-                          opacity: [0.2, 0.4, 0.2]
-                        }}
-                        transition={{ duration: 2.5, repeat: Infinity, delay: 0.5 }}
-                        className="absolute inset-0 bg-gradient-to-b from-white/20 via-primary/10 to-transparent blur-2xl rounded-full -z-10 w-80 h-80"
-                      />
-
-                      <motion.h2
-                        animate={{ 
-                          scale: [1, 1.08, 1],
-                          textShadow: [
-                            '0 0 0px rgba(255,77,109,0)',
-                            '0 0 50px rgba(255,77,109,0.8)',
-                            '0 0 20px rgba(255,77,109,0.4)'
-                          ],
-                          letterSpacing: ['0.05em', '0.08em', '0.05em']
-                        }}
-                        transition={{ duration: 2, repeat: Infinity }}
-                        className="text-6xl md:text-7xl font-black text-white tracking-tight mb-6 drop-shadow-2xl leading-tight"
+                        className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-tight"
                       >
-                        CONGRATULATIONS
+                        HEY MY DEAR WIFE<br />
+                        <span className="text-primary">YOU YOU WOW! 💖</span>
                       </motion.h2>
-
-                      <motion.p
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.3, duration: 0.8 }}
-                        className="text-3xl md:text-4xl font-black text-primary uppercase tracking-[0.2em] drop-shadow-xl mb-4"
-                      >
-                        DARLOO 💖
-                      </motion.p>
-
-                      <motion.p
-                        animate={{ opacity: [0.7, 1, 0.7] }}
-                        transition={{ duration: 1.5, repeat: Infinity }}
-                        className="text-2xl md:text-3xl font-black text-white uppercase tracking-[0.4em] drop-shadow-lg mb-2"
-                      >
-                        YOU WON
-                      </motion.p>
-
-                      <motion.p
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.5, duration: 0.8 }}
-                        className="text-xl md:text-2xl font-bold text-primary/90 uppercase tracking-wider mt-4 drop-shadow-lg italic"
-                      >
-                        {selectedOption === 1 ? activeGiftSet.option1.title : selectedOption === 2 ? activeGiftSet.option2.title : activeGiftSet.option3.title}
-                      </motion.p>
-
-                      {/* Tap to continue prompt */}
-                      {revealPhase === 'revealing' && (
-                        <motion.div
-                          animate={{ scale: [0.95, 1.05, 0.95], opacity: [0.6, 1, 0.6] }}
-                          transition={{ duration: 1.5, repeat: Infinity }}
-                          className="absolute -bottom-12 left-1/2 transform -translate-x-1/2 text-white/80 font-bold uppercase text-sm tracking-widest"
-                        >
-                          ✨ Gift Ready to Open ✨
-                        </motion.div>
-                      )}
-                    </motion.div>
+                      <div className="h-1 w-16 bg-primary mx-auto rounded-full" />
+                      <p className="text-lg md:text-xl font-black text-slate-600 uppercase tracking-[0.3em]">
+                        YOU UNLOCKED: {
+                          (revealingGiftSet.option1.isPrimary ? revealingGiftSet.option1.title : 
+                           revealingGiftSet.option2.isPrimary ? revealingGiftSet.option2.title : 
+                           revealingGiftSet.option3.title).toUpperCase()
+                        }
+                      </p>
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              {/* COMPLETE ACTION BUTTON */}
+              {/* Final Action Button */}
               <AnimatePresence>
                 {revealPhase === 'complete' && (
                   <motion.div
-                    initial={{ opacity: 0, y: 30 }}
+                    initial={{ opacity: 0, y: 50 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 20 }}
-                    transition={{ duration: 0.6 }}
-                    className="mt-20 w-full max-w-xs"
+                    className="mt-24 w-full max-w-md"
                   >
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.98 }}
+                    <button
                       onClick={handleClose}
-                      className="w-full bg-gradient-to-r from-primary to-secondary text-white py-6 rounded-2xl font-black text-sm tracking-[0.3em] uppercase shadow-2xl shadow-primary/40 hover:shadow-primary/60 transition-all"
+                      className="w-full bg-slate-900 text-white py-8 rounded-[2.5rem] font-black text-xl tracking-[0.5em] uppercase shadow-[0_30px_60px_rgba(15,23,42,0.3)] hover:scale-105 active:scale-95 transition-all relative overflow-hidden group"
                     >
-                      Continue Journey
-                    </motion.button>
+                      <div className="absolute inset-0 bg-primary/10 translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500" />
+                      <span className="relative z-10">Continue Journey</span>
+                    </button>
                   </motion.div>
                 )}
               </AnimatePresence>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+      </div>
+    </motion.div>
   );
 }

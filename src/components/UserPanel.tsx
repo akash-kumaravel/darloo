@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Heart, Star, Gift, Calendar, MessageSquare, ChevronRight, Clock, Camera } from 'lucide-react';
-import { doc, onSnapshot, collection, query, orderBy, limit } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, orderBy, limit, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { GameStats, UserProfile, DailyMessage, NextEvent, Memory } from '../types';
+import { GameStats, UserProfile, DailyMessage, NextEvent, Memory, GiftSet } from '../types';
 import StarReactor from './StarReactor';
 import GiftSystem from './GiftSystem';
 import MoodEngine from './MoodEngine';
@@ -19,6 +19,8 @@ export default function UserPanel({ stats, profile }: UserPanelProps) {
   const [dailyMsg, setDailyMsg] = useState<DailyMessage | null>(null);
   const [nextEvent, setNextEvent] = useState<NextEvent | null>(null);
   const [latestMemory, setLatestMemory] = useState<Memory | null>(null);
+  const [activeGiftSet, setActiveGiftSet] = useState<GiftSet | null>(null);
+  const [showGiftModal, setShowGiftModal] = useState(false);
   const [timeLeft, setTimeLeft] = useState('');
 
   useEffect(() => {
@@ -46,10 +48,25 @@ export default function UserPanel({ stats, profile }: UserPanelProps) {
       }
     );
 
+    const giftPath = 'giftSets';
+    const giftUnsub = onSnapshot(
+      query(collection(db, giftPath), where('unlocked', '==', false), orderBy('createdAt', 'asc'), limit(1)),
+      (snap) => {
+        if (!snap.empty) {
+          setActiveGiftSet({ id: snap.docs[0].id, ...snap.docs[0].data() } as GiftSet);
+        } else {
+          setActiveGiftSet(null);
+        }
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, giftPath);
+      }
+    );
+
     return () => {
       msgUnsub();
       eventUnsub();
       memoryUnsub();
+      giftUnsub();
     };
   }, []);
 
@@ -76,15 +93,18 @@ export default function UserPanel({ stats, profile }: UserPanelProps) {
     return () => clearInterval(interval);
   }, [nextEvent]);
 
-  const [giftOpenRequested, setGiftOpenRequested] = useState(false);
-
   return (
     <div className="space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <img src={profile?.photo} alt={profile?.name} className="w-12 h-12 rounded-full border-2 border-white shadow-lg" />
+            <img 
+              src={profile?.role === 'user' ? 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop' : (profile?.photo || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin')} 
+              alt={profile?.name} 
+              className="w-12 h-12 rounded-full border-2 border-white shadow-lg object-cover" 
+              referrerPolicy="no-referrer"
+            />
             <div className="absolute -bottom-1 -right-1 bg-primary p-1 rounded-full">
               <Heart className="w-2 h-2 text-white fill-white" />
             </div>
@@ -92,8 +112,8 @@ export default function UserPanel({ stats, profile }: UserPanelProps) {
           <div>
             <h1 className="text-xl font-black tracking-tighter">HELLO, {profile?.role === 'admin' ? profile?.name?.split(' ')[0].toUpperCase() : 'DARLOO'}</h1>
             <div className="flex items-center gap-1 text-[10px] font-bold text-primary uppercase tracking-widest">
-              <Star className="w-2 h-2 fill-primary" />
-              Relationship Level {stats?.level || 1}
+              <Gift className="w-2 h-2" />
+              Gifts Received: {stats?.giftsReceived || 0}
             </div>
           </div>
         </div>
@@ -123,10 +143,13 @@ export default function UserPanel({ stats, profile }: UserPanelProps) {
       </AnimatePresence>
 
       {/* Star Reactor */}
-      <StarReactor
-        totalStars={stats?.totalStars || 0}
-        isAdmin={false}
-        onGiftOpen={() => setGiftOpenRequested(true)}
+      <StarReactor 
+        totalStars={stats?.totalStars || 0} 
+        giftsReceived={stats?.giftsReceived || 0} 
+        lastGiftStarCount={stats?.lastGiftStarCount || 0}
+        isAdmin={profile?.role === 'admin'} 
+        isGiftReady={!!activeGiftSet && (stats?.totalStars || 0) >= (stats?.lastGiftStarCount || 0) + 25}
+        onOpenGift={() => setShowGiftModal(true)}
       />
 
       {/* Mood Engine */}
@@ -135,12 +158,17 @@ export default function UserPanel({ stats, profile }: UserPanelProps) {
       {/* Choice Moments */}
       <ChoiceMoments />
 
-      {/* Gift System */}
-      <GiftSystem
-        totalStars={stats?.totalStars || 0}
-        giftOpenRequest={giftOpenRequested}
-        onGiftOpened={() => setGiftOpenRequested(false)}
-      />
+      {/* Gift System Modal */}
+      <AnimatePresence>
+        {showGiftModal && activeGiftSet && (
+          <GiftSystem 
+            activeGiftSet={activeGiftSet}
+            totalStars={stats?.totalStars || 0}
+            lastGiftStarCount={stats?.lastGiftStarCount || 0}
+            onClose={() => setShowGiftModal(false)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Next Event & Memory */}
       <div className="grid grid-cols-2 gap-4">

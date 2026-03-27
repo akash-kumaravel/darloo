@@ -65,7 +65,7 @@ service cloud.firestore {
     
     function isAdmin() {
       return isAuthenticated() && 
-        (request.auth.token.email == "akashkumaravel3@gmail.com" || 
+        (request.auth.token.email == "admin@loveverse.com" || 
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
@@ -99,7 +99,7 @@ service cloud.firestore {
 
     // Stats
     match /stats/global {
-      allow read: if isAuthenticated();
+      allow read: if true; // Temporarily allow public read to debug login issues
       allow create: if isAuthenticated();
       allow update: if isAuthenticated();
     }
@@ -121,7 +121,7 @@ service cloud.firestore {
 
     // Messages
     match /messages/daily {
-      allow read: if isAuthenticated();
+      allow read: if true; // Temporarily allow public read to debug login issues
       allow write: if isAdmin();
     }
 

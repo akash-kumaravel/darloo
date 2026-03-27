@@ -49,18 +49,27 @@ export function MoodProvider({ children }: { children: React.ReactNode }) {
   const [currentMood, setCurrentMood] = useState<MoodType>('happy');
 
   useEffect(() => {
+    let unsubscribeMood: (() => void) | undefined;
+
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
-        const unsubscribeMood = onSnapshot(doc(db, 'moods', user.uid), (snap) => {
+        unsubscribeMood = onSnapshot(doc(db, 'moods', user.uid), (snap) => {
           if (snap.exists()) {
             setCurrentMood(snap.data().mood as MoodType);
           }
         });
-        return () => unsubscribeMood();
+      } else {
+        if (unsubscribeMood) {
+          unsubscribeMood();
+          unsubscribeMood = undefined;
+        }
       }
     });
 
-    return () => unsubAuth();
+    return () => {
+      unsubAuth();
+      if (unsubscribeMood) unsubscribeMood();
+    };
   }, []);
 
   const setMood = async (mood: MoodType) => {
@@ -68,26 +77,13 @@ export function MoodProvider({ children }: { children: React.ReactNode }) {
     if (!user) return;
 
     try {
-      // Determine if current user is admin
-      const userEmail = user.email || '';
-      const isAdmin = userEmail === 'akashkumaravel3@gmail.com';
-      const displayName = isAdmin ? 'Admin' : (user.displayName || 'Darloo');
-
-      // Update the mood document with full data structure
       await setDoc(doc(db, 'moods', user.uid), {
         userId: user.uid,
-        userName: displayName,
-        userEmail: userEmail,
+        userName: user.email === 'admin@loveverse.com' ? 'Admin' : 'Darloo',
         mood,
-        isAdmin,
-        updatedAt: new Date().toISOString(),
-        timestamp: new Date()
-      }, { merge: true }); // Use merge to not overwrite other fields
-
-      // Also log the mood change
-      console.log(`Mood updated: ${displayName} -> ${mood}`);
+        updatedAt: new Date().toISOString()
+      });
     } catch (error) {
-      console.error('Mood update error:', error);
       handleFirestoreError(error, OperationType.WRITE, `moods/${user.uid}`);
     }
   };

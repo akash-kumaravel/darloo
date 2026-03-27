@@ -10,8 +10,8 @@ export interface UserProfile {
 
 export interface GameStats {
   totalStars: number;
-  level: number;
-  xp: number;
+  giftsReceived: number;
+  lastGiftStarCount?: number;
   lastStarGivenAt?: string;
 }
 
@@ -19,6 +19,7 @@ export interface GiftOption {
   title: string;
   message: string;
   image: string;
+  isPrimary?: boolean;
 }
 
 export interface GiftSet {

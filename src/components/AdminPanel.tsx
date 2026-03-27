@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, 
   Send, 
@@ -10,7 +10,9 @@ import {
   Clock,
   Trash2,
   Settings,
-  X
+  X,
+  ChevronRight,
+  Sparkles
 } from 'lucide-react';
 import { 
   doc, 
@@ -22,16 +24,17 @@ import {
   query,
   orderBy,
   limit,
-  getDocs
+  getDocs,
+  where
 } from 'firebase/firestore';
 import { db, storage } from '../firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { GameStats, UserProfile, DailyMessage, NextEvent, UserMood, ChoiceResponse } from '../types';
+import { GameStats, UserProfile, DailyMessage, NextEvent, UserMood, ChoiceResponse, GiftSet } from '../types';
 import { toast } from 'sonner';
 import StarReactor from './StarReactor';
 import { handleFirestoreError, OperationType } from '../lib/firestore-error';
-import { Smile, Heart as HeartIcon, Frown, Moon, Sparkles } from 'lucide-react';
-import { sanitizeFileName, validateImageFile } from '../lib/utils';
+import { Smile, Heart as HeartIcon, Frown, Moon } from 'lucide-react';
+import { cn } from '../lib/utils';
 
 interface AdminPanelProps {
   stats: GameStats | null;
@@ -49,6 +52,7 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   const [userMoods, setUserMoods] = useState<UserMood[]>([]);
   const [choiceResponses, setChoiceResponses] = useState<ChoiceResponse[]>([]);
   const [showChoiceForm, setShowChoiceForm] = useState(false);
+  const [existingGiftSets, setExistingGiftSets] = useState<GiftSet[]>([]);
 
   // Choice Moment Form State
   const [choiceQuestion, setChoiceQuestion] = useState('');
@@ -59,24 +63,29 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   ]);
 
   useEffect(() => {
-    const moodQuery = query(collection(db, 'moods'), orderBy('updatedAt', 'desc'));
-    const unsubscribeMoods = onSnapshot(moodQuery, (snap) => {
-      const moods = snap.docs.map(doc => {
-        const data = doc.data() as UserMood;
-        return {
-          ...data,
-          id: doc.id
-        };
-      });
-      console.log('Moods updated:', moods); // Debug log
-      setUserMoods(moods);
-    }, (error) => {
-      console.error('Moods snapshot error:', error);
-      handleFirestoreError(error, OperationType.GET, 'moods');
-    });
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayISO = today.toISOString();
+
+    const unsubscribeMoods = onSnapshot(
+      query(
+        collection(db, 'moods'), 
+        where('updatedAt', '>=', todayISO),
+        orderBy('updatedAt', 'desc')
+      ), 
+      (snap) => {
+        const moods = snap.docs.map(doc => doc.data() as UserMood);
+        setUserMoods(moods);
+      }
+    );
 
     const unsubscribeResponses = onSnapshot(
-      query(collection(db, 'choiceResponses'), orderBy('createdAt', 'desc'), limit(10)),
+      query(
+        collection(db, 'choiceResponses'), 
+        where('createdAt', '>=', todayISO),
+        orderBy('createdAt', 'desc'), 
+        limit(20)
+      ),
       (snap) => {
         const responses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChoiceResponse));
         setChoiceResponses(responses);
@@ -88,10 +97,22 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
       unsubscribeResponses();
     };
   }, []);
+
+  useEffect(() => {
+    const q = query(collection(db, 'giftSets'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const sets = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as GiftSet));
+      setExistingGiftSets(sets);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'giftSets');
+    });
+    return () => unsubscribe();
+  }, []);
+
   const [giftOptions, setGiftOptions] = useState([
-    { title: '', message: '', image: null as File | null },
-    { title: '', message: '', image: null as File | null },
-    { title: '', message: '', image: null as File | null },
+    { title: '', message: '', image: null as File | null, isPrimary: true },
+    { title: '', message: '', image: null as File | null, isPrimary: false },
+    { title: '', message: '', image: null as File | null, isPrimary: false },
   ]);
 
   const updateDailyMessage = async () => {
@@ -124,22 +145,18 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   };
 
   const uploadMemory = async () => {
-    if (!memoryImage || !memoryCaption) {
-      toast.error('Please select an image and add a caption');
-      return;
-    }
+    if (!memoryImage || !memoryCaption) return;
     
-    const validation = validateImageFile(memoryImage, 5);
-    if (!validation.valid) {
-      toast.error(validation.error || 'Invalid image');
+    // Check file size (limit to 5MB)
+    if (memoryImage.size > 5 * 1024 * 1024) {
+      toast.error('Image is too large (max 5MB)');
       return;
     }
 
     setIsUploading(true);
     console.log('Starting memory upload...', memoryImage.name);
     try {
-      const sanitizedName = sanitizeFileName(memoryImage.name);
-      const storageRef = ref(storage, `memories/${Date.now()}_${sanitizedName}`);
+      const storageRef = ref(storage, `memories/${Date.now()}_${memoryImage.name}`);
       console.log('Storage ref created:', storageRef.fullPath);
       
       const uploadTask = uploadBytesResumable(storageRef, memoryImage);
@@ -176,8 +193,7 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
       setMemoryImage(null);
     } catch (error) {
       console.error('Upload error details:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Upload failed';
-      toast.error(errorMsg.includes('permission') ? 'Permission denied. Make sure you are logged in.' : `Upload failed: ${errorMsg}`);
+      toast.error('Upload failed. Check console for details.');
       handleFirestoreError(error, OperationType.CREATE, 'memories');
     } finally {
       setIsUploading(false);
@@ -188,12 +204,9 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   const createGiftSet = async () => {
     // Check all images first
     for (const opt of giftOptions) {
-      if (opt.image) {
-        const validation = validateImageFile(opt.image, 5);
-        if (!validation.valid) {
-          toast.error(validation.error || `Invalid image for ${opt.title || 'gift'}`);
-          return;
-        }
+      if (opt.image && opt.image.size > 5 * 1024 * 1024) {
+        toast.error(`Image for ${opt.title || 'gift'} is too large (max 5MB)`);
+        return;
       }
     }
 
@@ -204,8 +217,7 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
         let url = `https://picsum.photos/seed/gift${i}/400/400`;
         if (opt.image) {
           console.log(`Uploading gift image ${i + 1}:`, opt.image.name);
-          const sanitizedName = sanitizeFileName(opt.image.name);
-          const storageRef = ref(storage, `gifts/${Date.now()}_${sanitizedName}`);
+          const storageRef = ref(storage, `gifts/${Date.now()}_${opt.image.name}`);
           
           const uploadTask = uploadBytesResumable(storageRef, opt.image);
 
@@ -229,7 +241,13 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
           url = await getDownloadURL(storageRef);
           console.log(`Gift image ${i + 1} URL:`, url);
         }
-        return { title: opt.title || `Gift ${i + 1}`, message: opt.message || 'A special surprise!', image: url };
+        const isPrimary = opt.isPrimary || false;
+        return { 
+          title: opt.title || `Gift ${i + 1}`, 
+          message: opt.message || 'A special surprise!', 
+          image: url,
+          isPrimary: isPrimary
+        };
       }));
 
       console.log('Final uploaded options:', uploadedOptions);
@@ -246,9 +264,9 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
       toast.success('Gift set created! 🎁');
       setShowGiftForm(false);
       setGiftOptions([
-        { title: '', message: '', image: null },
-        { title: '', message: '', image: null },
-        { title: '', message: '', image: null },
+        { title: '', message: '', image: null, isPrimary: true },
+        { title: '', message: '', image: null, isPrimary: false },
+        { title: '', message: '', image: null, isPrimary: false },
       ]);
     } catch (error) {
       console.error('Gift set creation error:', error);
@@ -257,6 +275,16 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
     } finally {
       setIsUploading(false);
       console.log('Gift set creation process finished.');
+    }
+  };
+
+  const deleteGiftSet = async (id: string) => {
+    try {
+      // In a real app we'd delete from storage too, but for now just firestore
+      await updateDoc(doc(db, 'giftSets', id), { deleted: true });
+      toast.success('Gift set removed');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `giftSets/${id}`);
     }
   };
 
@@ -309,7 +337,13 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
         </div>
       </div>
 
-      <StarReactor totalStars={stats?.totalStars || 0} isAdmin={true} />
+      <StarReactor 
+        totalStars={stats?.totalStars || 0} 
+        giftsReceived={stats?.giftsReceived || 0} 
+        lastGiftStarCount={stats?.lastGiftStarCount || 0}
+        isAdmin={true} 
+        isGiftReady={false}
+      />
 
       {/* Mood Monitor */}
       <div className="glass rounded-3xl p-6 space-y-4">
@@ -399,30 +433,56 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
         </div>
 
         {/* Next Event */}
-        <div className="glass rounded-3xl p-6 space-y-4">
-          <div className="flex items-center gap-3 text-primary font-bold">
-            <Calendar className="w-5 h-5" />
-            Next Big Event
-          </div>
-          <div className="space-y-3">
-            <input 
-              type="text" 
-              value={eventName}
-              onChange={(e) => setEventName(e.target.value)}
-              placeholder="Event Name (e.g. Anniversary)"
-              className="w-full bg-white/50 border-none rounded-xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
-            />
-            <input 
-              type="date" 
-              value={eventDate}
-              onChange={(e) => setEventDate(e.target.value)}
-              className="w-full bg-white/50 border-none rounded-xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
-            />
+        <div className="relative overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-secondary/20 opacity-50" />
+          <div className="relative glass rounded-[2.5rem] p-8 space-y-6 border-2 border-white/40 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center shadow-inner">
+                  <Calendar className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black tracking-tighter text-slate-800">NEXT BIG EVENT</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Countdown to Magic</p>
+                </div>
+              </div>
+              <motion.div 
+                animate={{ rotate: [0, 10, -10, 0] }}
+                transition={{ repeat: Infinity, duration: 4 }}
+                className="bg-white p-2 rounded-xl shadow-sm"
+              >
+                <Clock className="w-5 h-5 text-primary" />
+              </motion.div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Event Title</label>
+                <input 
+                  type="text" 
+                  value={eventName}
+                  onChange={(e) => setEventName(e.target.value)}
+                  placeholder="e.g. Anniversary"
+                  className="w-full bg-white/60 border-2 border-transparent rounded-2xl px-5 py-4 outline-none focus:border-primary/30 focus:bg-white transition-all text-sm font-bold shadow-sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Target Date</label>
+                <input 
+                  type="date" 
+                  value={eventDate}
+                  onChange={(e) => setEventDate(e.target.value)}
+                  className="w-full bg-white/60 border-2 border-transparent rounded-2xl px-5 py-4 outline-none focus:border-primary/30 focus:bg-white transition-all text-sm font-bold shadow-sm"
+                />
+              </div>
+            </div>
+
             <button 
               onClick={updateNextEvent}
-              className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg shadow-primary/20"
+              className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-sm uppercase tracking-[0.2em] shadow-2xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 group"
             >
-              Schedule Event
+              <span>Schedule Event</span>
+              <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
         </div>
@@ -458,75 +518,69 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
         </div>
 
         {/* Gift Management */}
-        <div className="glass rounded-3xl p-6 space-y-4">
-          <div className="flex items-center justify-between text-primary font-bold">
-            <div className="flex items-center gap-3">
-              <Gift className="w-5 h-5" />
-              Gift Management
+        <div className="glass rounded-3xl p-6 space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3 text-primary font-bold">
+              <Gift className="w-6 h-6" />
+              <span className="text-xl tracking-tighter">GIFT MANAGEMENT</span>
             </div>
-            {showGiftForm && (
-              <button onClick={() => setShowGiftForm(false)}>
-                <X className="w-5 h-5 text-slate-400" />
-              </button>
-            )}
-          </div>
-          
-          {!showGiftForm ? (
             <button 
               onClick={() => setShowGiftForm(true)}
-              className="w-full py-4 border-2 border-dashed border-primary/30 rounded-2xl flex items-center justify-center gap-2 text-primary font-bold hover:bg-primary/5 transition-colors"
+              className="bg-primary text-white px-6 py-2 rounded-full font-black text-[10px] uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
             >
-              <Plus className="w-5 h-5" />
-              Create New Gift Set
+              + Create New
             </button>
-          ) : (
-            <div className="space-y-6">
-              {giftOptions.map((opt, i) => (
-                <div key={i} className="bg-white/30 p-4 rounded-2xl space-y-3">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Option {i + 1}</div>
-                  <input 
-                    type="text" 
-                    value={opt.title}
-                    onChange={(e) => {
-                      const newOpts = [...giftOptions];
-                      newOpts[i].title = e.target.value;
-                      setGiftOptions(newOpts);
-                    }}
-                    placeholder="Gift Title"
-                    className="w-full bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
-                  />
-                  <input 
-                    type="text" 
-                    value={opt.message}
-                    onChange={(e) => {
-                      const newOpts = [...giftOptions];
-                      newOpts[i].message = e.target.value;
-                      setGiftOptions(newOpts);
-                    }}
-                    placeholder="Gift Message"
-                    className="w-full bg-white/50 border-none rounded-xl px-4 py-2 text-sm outline-none"
-                  />
-                  <input 
-                    type="file" 
-                    accept="image/*"
-                    onChange={(e) => {
-                      const newOpts = [...giftOptions];
-                      newOpts[i].image = e.target.files?.[0] || null;
-                      setGiftOptions(newOpts);
-                    }}
-                    className="w-full text-[10px] file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-primary/10 file:text-primary"
-                  />
-                </div>
-              ))}
-              <button 
-                onClick={createGiftSet}
-                disabled={isUploading}
-                className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/20 disabled:opacity-50"
-              >
-                {isUploading ? 'Creating...' : 'Create Gift Set'}
-              </button>
-            </div>
-          )}
+          </div>
+          
+          <div className="space-y-4">
+            {existingGiftSets.filter(s => !(s as any).deleted).length === 0 ? (
+              <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-[2rem] bg-slate-50/50">
+                <Gift className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No gift sets deployed</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {existingGiftSets.filter(s => !(s as any).deleted).map((set) => (
+                  <div key={set.id} className="bg-white/40 border border-white/60 p-5 rounded-[2rem] flex items-center justify-between group hover:bg-white/60 transition-all">
+                    <div className="flex items-center gap-4">
+                      <div className="relative w-14 h-14">
+                        <img 
+                          src={set.option1.isPrimary ? set.option1.image : set.option2.isPrimary ? set.option2.image : set.option3.image} 
+                          className="w-full h-full object-cover rounded-2xl shadow-md"
+                          alt="Gift"
+                        />
+                        <div className="absolute -top-2 -right-2 bg-primary text-white w-6 h-6 rounded-full flex items-center justify-center shadow-lg">
+                          <Sparkles className="w-3 h-3" />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm font-black text-slate-800 uppercase tracking-tight">
+                          {set.option1.isPrimary ? set.option1.title : set.option2.isPrimary ? set.option2.title : set.option3.title}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={cn(
+                            "text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest",
+                            set.unlocked ? "bg-green-100 text-green-600" : "bg-blue-100 text-blue-600"
+                          )}>
+                            {set.unlocked ? 'UNLOCKED' : 'ACTIVE'}
+                          </span>
+                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                            {new Date(set.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => deleteGiftSet(set.id)}
+                      className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all rounded-xl"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Choice Moments */}
@@ -611,6 +665,157 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
           )}
         </div>
       </div>
+
+      {/* Gift Creation Modal - Moved to root for better stacking context */}
+      <AnimatePresence>
+        {showGiftForm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[99999] bg-slate-950/80 backdrop-blur-2xl flex items-start justify-center p-4 overflow-y-auto pt-12"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 100, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.9, y: 100, opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="bg-white/90 backdrop-blur-md rounded-[4rem] w-full max-w-5xl shadow-[0_0_100px_rgba(0,0,0,0.2)] border-[12px] border-white relative mb-24 overflow-hidden"
+            >
+              {/* Modal Header */}
+              <div className="p-12 bg-gradient-to-br from-slate-50 to-white border-b border-slate-100 relative">
+                <div className="absolute top-12 right-12">
+                  <button 
+                    onClick={() => setShowGiftForm(false)}
+                    className="bg-slate-900 text-white p-5 rounded-full shadow-2xl hover:scale-110 active:scale-90 transition-all group"
+                  >
+                    <X className="w-8 h-8 group-hover:rotate-90 transition-transform duration-500" />
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-8">
+                  <div className="w-24 h-24 bg-primary rounded-[2rem] flex items-center justify-center shadow-[0_20px_40px_rgba(255,77,109,0.3)] rotate-3">
+                    <Gift className="w-12 h-12 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-5xl font-black tracking-tighter text-slate-900 leading-none">NEW GIFT SET</h2>
+                    <p className="text-sm font-black text-primary uppercase tracking-[0.5em] mt-3">Triple Mystery Deployment</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-12 space-y-12">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  {giftOptions.map((opt, i) => (
+                    <motion.div 
+                      key={i} 
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.1 }}
+                      className={cn(
+                        "relative p-8 rounded-[3.5rem] border-4 transition-all duration-700 flex flex-col gap-8",
+                        opt.isPrimary ? "bg-primary/5 border-primary shadow-2xl shadow-primary/10" : "bg-slate-50/50 border-transparent hover:bg-slate-100/50"
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="w-8 h-8 bg-slate-900 text-white rounded-full flex items-center justify-center text-xs font-black">{i + 1}</span>
+                          <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Option</span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const newOpts = giftOptions.map((o, idx) => ({
+                              ...o,
+                              isPrimary: idx === i
+                            }));
+                            setGiftOptions(newOpts);
+                          }}
+                          className={cn(
+                            "px-6 py-3 rounded-full text-xs font-black uppercase tracking-widest transition-all",
+                            opt.isPrimary ? "bg-primary text-white shadow-xl shadow-primary/30" : "bg-white text-slate-400 hover:text-primary shadow-md"
+                          )}
+                        >
+                          {opt.isPrimary ? 'PRIMARY' : 'SELECT'}
+                        </button>
+                      </div>
+
+                      <div className="space-y-6">
+                        <div className="relative aspect-square bg-white rounded-[2.5rem] border-4 border-dashed border-slate-200 overflow-hidden group cursor-pointer shadow-inner">
+                          {opt.image ? (
+                            <img 
+                              src={URL.createObjectURL(opt.image)} 
+                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
+                              alt="Preview" 
+                            />
+                          ) : (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-slate-300 group-hover:text-primary transition-colors">
+                              <ImageIcon className="w-12 h-12" />
+                              <span className="text-xs font-black uppercase tracking-widest">Add Visual</span>
+                            </div>
+                          )}
+                          <input 
+                            type="file" 
+                            accept="image/*"
+                            onChange={(e) => {
+                              const newOpts = [...giftOptions];
+                              newOpts[i].image = e.target.files?.[0] || null;
+                              setGiftOptions(newOpts);
+                            }}
+                            className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                          />
+                        </div>
+
+                        <div className="space-y-4">
+                          <input 
+                            type="text" 
+                            value={opt.title}
+                            onChange={(e) => {
+                              const newOpts = [...giftOptions];
+                              newOpts[i].title = e.target.value;
+                              setGiftOptions(newOpts);
+                            }}
+                            placeholder="Gift Title"
+                            className="w-full bg-white border-2 border-transparent rounded-2xl px-6 py-4 text-sm font-black outline-none shadow-sm focus:border-primary/30 focus:shadow-xl transition-all"
+                          />
+                          <textarea 
+                            value={opt.message}
+                            onChange={(e) => {
+                              const newOpts = [...giftOptions];
+                              newOpts[i].message = e.target.value;
+                              setGiftOptions(newOpts);
+                            }}
+                            placeholder="Write a sweet message..."
+                            className="w-full bg-white border-2 border-transparent rounded-2xl px-6 py-4 text-sm font-medium outline-none shadow-sm focus:border-primary/30 focus:shadow-xl transition-all resize-none h-32"
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+
+                <div className="pt-8">
+                  <button 
+                    onClick={createGiftSet}
+                    disabled={isUploading || giftOptions.some(o => !o.title || !o.message)}
+                    className="w-full bg-slate-900 text-white py-8 rounded-[3rem] text-xl font-black tracking-[0.5em] uppercase shadow-[0_30px_60px_rgba(15,23,42,0.3)] disabled:opacity-50 hover:scale-[1.02] active:scale-[0.98] transition-all relative overflow-hidden group"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-white/20 to-primary/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+                    {isUploading ? (
+                      <div className="flex items-center justify-center gap-6">
+                        <Clock className="w-8 h-8 animate-spin" />
+                        <span>INITIATING MAGIC...</span>
+                      </div>
+                    ) : (
+                      'DEPLOY GIFT SET'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
