@@ -27,14 +27,15 @@ import {
   limit,
   getDocs,
   where,
-  increment
+  increment,
+  deleteDoc
 } from 'firebase/firestore';
-import { db, storage } from '../firebase';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { db } from '../firebase';
 import { GameStats, UserProfile, DailyMessage, NextEvent, UserMood, ChoiceResponse, GiftSet } from '../types';
 import { toast } from 'sonner';
 import StarReactor from './StarReactor';
 import { handleFirestoreError, OperationType } from '../lib/firestore-error';
+import { uploadToImgbb } from '../lib/imgbb-upload';
 import { Smile, Heart as HeartIcon, Frown, Moon } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -155,43 +156,21 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   const uploadMemory = async () => {
     if (!memoryImage || !memoryCaption) return;
     
-    // Check file size (limit to 5MB)
-    if (memoryImage.size > 5 * 1024 * 1024) {
-      toast.error('Image is too large (max 5MB)');
+    // Check file size (limit to 10MB for Imgbb)
+    if (memoryImage.size > 10 * 1024 * 1024) {
+      toast.error('Image is too large (max 10MB)');
       return;
     }
 
     setIsUploading(true);
-    console.log('Starting memory upload...', memoryImage.name);
+    console.log('Starting memory upload to Imgbb...', memoryImage.name);
     try {
-      const storageRef = ref(storage, `memories/${Date.now()}_${memoryImage.name}`);
-      console.log('Storage ref created:', storageRef.fullPath);
-      
-      const uploadTask = uploadBytesResumable(storageRef, memoryImage);
-
-      await new Promise((resolve, reject) => {
-        uploadTask.on('state_changed', 
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            console.log('Upload is ' + progress + '% done');
-          }, 
-          (error) => {
-            console.error('Upload task failed:', error);
-            reject(error);
-          }, 
-          () => {
-            console.log('Upload task completed successfully');
-            resolve(null);
-          }
-        );
-      });
-      
-      const url = await getDownloadURL(storageRef);
-      console.log('Download URL obtained:', url);
+      const imageUrl = await uploadToImgbb(memoryImage);
+      console.log('Image URL obtained:', imageUrl);
 
       await addDoc(collection(db, 'memories'), {
         weeklyMemory: memoryCaption,
-        image: url,
+        image: imageUrl,
         caption: memoryCaption,
         createdAt: new Date().toISOString()
       });
@@ -201,7 +180,7 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
       setMemoryImage(null);
     } catch (error) {
       console.error('Upload error details:', error);
-      toast.error('Upload failed. Check console for details.');
+      toast.error(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}. Check browser console.`);
       handleFirestoreError(error, OperationType.CREATE, 'memories');
     } finally {
       setIsUploading(false);
@@ -212,8 +191,12 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   const createGiftSet = async () => {
     // Check all images first
     for (const opt of giftOptions) {
-      if (opt.image && opt.image.size > 5 * 1024 * 1024) {
-        toast.error(`Image for ${opt.title || 'gift'} is too large (max 5MB)`);
+      if (!opt.image) {
+        toast.error(`Please select an image for ${opt.title || 'gift'}`);
+        return;
+      }
+      if (opt.image.size > 10 * 1024 * 1024) {
+        toast.error(`Image for ${opt.title || 'gift'} is too large (max 10MB)`);
         return;
       }
     }
@@ -222,38 +205,19 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
     console.log('Starting gift set creation...');
     try {
       const uploadedOptions = await Promise.all(giftOptions.map(async (opt, i) => {
-        let url = `https://picsum.photos/seed/gift${i}/400/400`;
-        if (opt.image) {
-          console.log(`Uploading gift image ${i + 1}:`, opt.image.name);
-          const storageRef = ref(storage, `gifts/${Date.now()}_${opt.image.name}`);
-          
-          const uploadTask = uploadBytesResumable(storageRef, opt.image);
-
-          await new Promise((resolve, reject) => {
-            uploadTask.on('state_changed', 
-              (snapshot) => {
-                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                console.log(`Gift ${i + 1} upload is ${progress}% done`);
-              }, 
-              (error) => {
-                console.error(`Gift ${i + 1} upload failed:`, error);
-                reject(error);
-              }, 
-              () => {
-                console.log(`Gift ${i + 1} upload completed`);
-                resolve(null);
-              }
-            );
-          });
-
-          url = await getDownloadURL(storageRef);
-          console.log(`Gift image ${i + 1} URL:`, url);
+        if (!opt.image) {
+          throw new Error(`Image ${i + 1} is missing. All gifts must have images.`);
         }
+
+        console.log(`Uploading gift image ${i + 1}:`, opt.image.name);
+        const imageUrl = await uploadToImgbb(opt.image);
+        console.log(`Gift image ${i + 1} URL:`, imageUrl);
+        
         const isPrimary = opt.isPrimary || false;
         return { 
           title: opt.title || `Gift ${i + 1}`, 
           message: opt.message || 'A special surprise!', 
-          image: url,
+          image: imageUrl,
           isPrimary: isPrimary
         };
       }));
@@ -278,7 +242,7 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
       ]);
     } catch (error) {
       console.error('Gift set creation error:', error);
-      toast.error('Gift set creation failed. Check console.');
+      toast.error(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}. Check browser console.`);
       handleFirestoreError(error, OperationType.CREATE, 'giftSets');
     } finally {
       setIsUploading(false);
@@ -378,6 +342,25 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
     }
   };
 
+  const deleteChoiceResponse = async (response: ChoiceResponse) => {
+    if (!confirm(`Delete "${response.choiceLabel}" response from ${response.userName}? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, 'choiceResponses', response.id));
+      // Remove from local rewarded set
+      setRewardedResponses(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(response.id);
+        return newSet;
+      });
+      toast.success('Response deleted! 🗑️');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'choiceResponses');
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -465,18 +448,27 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
                       {r.choiceLabel}
                     </span>
                   </div>
-                  <button
-                    onClick={() => rewardChoiceResponse(r)}
-                    disabled={rewardedResponses.has(r.id)}
-                    className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold uppercase transition-all ${
-                      rewardedResponses.has(r.id)
-                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                        : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 shadow-sm'
-                    }`}
-                  >
-                    <Star className="w-4 h-4" />
-                    Add Star
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => rewardChoiceResponse(r)}
+                      disabled={rewardedResponses.has(r.id)}
+                      className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold uppercase transition-all ${
+                        rewardedResponses.has(r.id)
+                          ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                          : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 shadow-sm'
+                      }`}
+                    >
+                      <Star className="w-4 h-4" />
+                      Add Star
+                    </button>
+                    <button
+                      onClick={() => deleteChoiceResponse(r)}
+                      className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold uppercase transition-all bg-red-100 text-red-700 hover:bg-red-200 shadow-sm"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
