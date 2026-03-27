@@ -719,3 +719,4 @@ export default function GiftSystem({ totalStars, giftOpenRequest = false, onGift
       </motion.button>
     </div>
   );
+}
