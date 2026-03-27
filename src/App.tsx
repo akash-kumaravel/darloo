@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
   onAuthStateChanged, 
-  signInWithPopup, 
   signOut, 
   User as FirebaseUser 
 } from 'firebase/auth';
@@ -15,7 +14,7 @@ import {
   orderBy, 
   limit 
 } from 'firebase/firestore';
-import { auth, db, googleProvider } from './firebase';
+import { auth, db } from './firebase';
 import { UserProfile, GameStats, Role } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -117,12 +116,8 @@ export default function App() {
   }, [user]);
 
   const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-      toast.success('Welcome to LOVEVERSE ❤️');
-    } catch (error) {
-      toast.error('Login failed');
-    }
+    // Google sign-in removed
+    toast.error('Please use Admin Login');
   };
 
   const handleLogout = () => {
@@ -174,18 +169,9 @@ export default function App() {
 
         {!showAdminLogin ? (
           <div className="w-full max-w-xs space-y-4">
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={handleLogin}
-              className="w-full glass py-4 rounded-2xl flex items-center justify-center gap-3 font-bold text-slate-700 hover:bg-white transition-all"
-            >
-              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-6 h-6" />
-              Enter with Google
-            </motion.button>
             <button 
               onClick={() => setShowAdminLogin(true)}
-              className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-primary transition-colors"
+              className="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all"
             >
               Admin Login
             </button>

@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Camera, Heart, Maximize2, X, Plus, Image as ImageIcon, Send, Loader2 } from 'lucide-react';
 import { collection, query, onSnapshot, orderBy, addDoc } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { db, storage, auth } from '../firebase';
+import { db, auth } from '../firebase';
 import { Memory } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-error';
+import { uploadImage, fileToBase64 } from '../services/api';
 import { toast } from 'sonner';
 
 export default function MemoryVault() {
@@ -45,29 +45,33 @@ export default function MemoryVault() {
 
     setIsUploading(true);
     try {
-      const storageRef = ref(storage, `memories/${Date.now()}_${image.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, image);
+      // Convert file to base64
+      const base64 = await fileToBase64(image);
+      
+      // Upload to GitHub
+      const uploadResponse = await uploadImage(base64, `memory_${Date.now()}_${image.name}`);
+      
+      if (!uploadResponse.success) {
+        toast.error('Failed to upload image to GitHub');
+        return;
+      }
 
-      await new Promise((resolve, reject) => {
-        uploadTask.on('state_changed', null, reject, () => resolve(null));
-      });
-
-      const url = await getDownloadURL(storageRef);
-
+      // Save metadata to Firestore with GitHub URL
       await addDoc(collection(db, 'memories'), {
-        image: url,
+        image: uploadResponse.url,
         caption: caption,
         createdAt: new Date().toISOString(),
-        userId: auth.currentUser?.uid
+        userId: auth.currentUser?.uid,
+        filename: uploadResponse.filename
       });
 
-      toast.success('Memory added! 📸');
+      toast.success('Memory saved! 📸 (Stored on GitHub)');
       setCaption('');
       setImage(null);
       setShowUpload(false);
     } catch (error) {
       console.error('Memory upload error:', error);
-      toast.error('Failed to upload memory. Check CORS settings.');
+      toast.error('Failed to upload memory');
       handleFirestoreError(error, OperationType.CREATE, 'memories');
     } finally {
       setIsUploading(false);
