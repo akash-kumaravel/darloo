@@ -188,6 +188,11 @@ export default function App() {
     setShowUserLogin(false);
   };
 
+  const handleStarAdded = (newTotal: number) => {
+    setStats({ ...stats, totalStars: newTotal } as GameStats);
+    localStorage.setItem('loveverse_stats', JSON.stringify({ ...stats, totalStars: newTotal }));
+  };
+
   if (showSplash) return <Splash />;
   if (loading) return <div className="h-screen w-screen flex items-center justify-center cinematic-gradient"><Heart className="text-primary animate-pulse w-12 h-12" /></div>;
 
@@ -331,7 +336,7 @@ export default function App() {
               className="p-6"
             >
               {isAdminMode ? (
-                <AdminPanel stats={stats} profile={profile} />
+                <AdminPanel stats={stats} profile={profile} onStarAdded={handleStarAdded} />
               ) : (
                 <UserPanel stats={stats} profile={profile} />
               )}

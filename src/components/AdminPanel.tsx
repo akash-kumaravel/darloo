@@ -12,33 +12,26 @@ import {
   Settings,
   X
 } from 'lucide-react';
-import { 
-  doc, 
-  setDoc, 
-  updateDoc, 
-  collection, 
-  addDoc, 
-  onSnapshot,
-  query,
-  orderBy,
-  limit,
-  getDocs
-} from 'firebase/firestore';
-import { db, storage } from '../firebase';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { GameStats, UserProfile, DailyMessage, NextEvent, UserMood, ChoiceResponse } from '../types';
 import { toast } from 'sonner';
 import StarReactor from './StarReactor';
-import { handleFirestoreError, OperationType } from '../lib/firestore-error';
 import { Smile, Heart as HeartIcon, Frown, Moon, Sparkles } from 'lucide-react';
-import { sanitizeFileName, validateImageFile } from '../lib/utils';
+import { validateImageFile } from '../lib/utils';
+import { uploadImage, fileToBase64 } from '../services/api';
 
 interface AdminPanelProps {
   stats: GameStats | null;
   profile: UserProfile | null;
+  onStarAdded?: (newTotal: number) => void;
 }
 
-export default function AdminPanel({ stats, profile }: AdminPanelProps) {
+interface AdminPanelProps {
+  stats: GameStats | null;
+  profile: UserProfile | null;
+  onStarAdded?: (newTotal: number) => void;
+}
+
+export default function AdminPanel({ stats, profile, onStarAdded }: AdminPanelProps) {
   const [dailyMsg, setDailyMsg] = useState('');
   const [eventName, setEventName] = useState('');
   const [eventDate, setEventDate] = useState('');
@@ -111,16 +104,28 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
 
     setIsUploading(true);
     try {
-      // Store memory locally in localStorage (no Firebase Storage)
+      // Convert and upload image to server
+      const base64 = await fileToBase64(memoryImage);
+      const uploadResponse = await uploadImage(base64, `memory_admin_${Date.now()}_${memoryImage.name}`);
+      
+      if (!uploadResponse.success) {
+        toast.error('Failed to upload image to server');
+        setIsUploading(false);
+        return;
+      }
+
+      // Store memory with server URL
       const memories = JSON.parse(localStorage.getItem('loveverse_memories') || '[]');
       memories.push({
+        id: Date.now().toString(),
         caption: memoryCaption,
-        createdAt: new Date().toISOString(),
-        id: Date.now()
+        image: uploadResponse.url,
+        filename: uploadResponse.filename,
+        createdAt: new Date().toISOString()
       });
       localStorage.setItem('loveverse_memories', JSON.stringify(memories));
 
-      toast.success('Memory saved locally! 📸');
+      toast.success('Memory saved! 📸 (Image uploaded to server)');
       setMemoryCaption('');
       setMemoryImage(null);
     } catch (error) {
@@ -145,26 +150,42 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
 
     setIsUploading(true);
     try {
-      // Create gift set with placeholder URLs (no Firebase Storage)
-      const uploadedOptions = giftOptions.map((opt, i) => ({
-        title: opt.title || `Gift ${i + 1}`,
-        message: opt.message || 'A special surprise!',
-        image: `https://picsum.photos/seed/gift${Date.now()}_${i}/400/400`
-      }));
+      // Upload images to server
+      const uploadedOptions = [];
+      
+      for (let i = 0; i < giftOptions.length; i++) {
+        const opt = giftOptions[i];
+        let imageUrl = `https://picsum.photos/seed/gift${Date.now()}_${i}/400/400`;
+        
+        if (opt.image) {
+          const base64 = await fileToBase64(opt.image);
+          const uploadResponse = await uploadImage(base64, `gift_${Date.now()}_${i}_${opt.image.name}`);
+          
+          if (uploadResponse.success) {
+            imageUrl = uploadResponse.url;
+          }
+        }
+        
+        uploadedOptions.push({
+          title: opt.title || `Gift ${i + 1}`,
+          message: opt.message || 'A special surprise!',
+          image: imageUrl
+        });
+      }
 
       // Store in localStorage
-      const giftSets = JSON.parse(localStorage.getItem('loveverse_giftsets') || '[]');
+      const giftSets = JSON.parse(localStorage.getItem('loveverse_gifts') || '[]');
       giftSets.push({
-        id: Date.now(),
+        id: Date.now().toString(),
         option1: uploadedOptions[0],
         option2: uploadedOptions[1],
         option3: uploadedOptions[2],
         unlocked: false,
         createdAt: new Date().toISOString()
       });
-      localStorage.setItem('loveverse_giftsets', JSON.stringify(giftSets));
+      localStorage.setItem('loveverse_gifts', JSON.stringify(giftSets));
 
-      toast.success('Gift set created! 🎁');
+      toast.success('Gift set created! 🎁 (Images uploaded to server)');
       setShowGiftForm(false);
       setGiftOptions([
         { title: '', message: '', image: null },
@@ -225,7 +246,7 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
         </div>
       </div>
 
-      <StarReactor totalStars={stats?.totalStars || 0} isAdmin={true} />
+      <StarReactor totalStars={stats?.totalStars || 0} isAdmin={true} onStarAdded={onStarAdded} />
 
       {/* Mood Monitor */}
       <div className="glass rounded-3xl p-6 space-y-4">
