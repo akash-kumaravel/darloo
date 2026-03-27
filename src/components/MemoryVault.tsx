@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Camera, Heart, Maximize2, X, Plus, Image as ImageIcon, Send, Loader2 } from 'lucide-react';
-import { collection, query, onSnapshot, orderBy, addDoc } from 'firebase/firestore';
+import { Camera, Heart, Maximize2, X, Plus, Image as ImageIcon, Send, Loader2, Trash2 } from 'lucide-react';
+import { collection, query, onSnapshot, orderBy, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { Memory } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-error';
@@ -69,6 +69,22 @@ export default function MemoryVault() {
       handleFirestoreError(error, OperationType.CREATE, 'memories');
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const deleteMemory = async (memoryId: string) => {
+    if (!confirm('Delete this memory? This cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, 'memories', memoryId));
+      setSelectedMemory(null);
+      toast.success('Memory deleted! 🗑️');
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast.error('Failed to delete memory');
+      handleFirestoreError(error, OperationType.DELETE, 'memories');
     }
   };
 
@@ -195,6 +211,14 @@ export default function MemoryVault() {
               className="absolute top-8 right-8 text-white/50 hover:text-white transition-colors"
             >
               <X className="w-8 h-8" />
+            </button>
+
+            <button 
+              onClick={() => deleteMemory(selectedMemory.id)}
+              className="absolute top-8 left-8 text-red-400 hover:text-red-300 transition-colors flex items-center gap-2"
+            >
+              <Trash2 className="w-5 h-5" />
+              <span className="text-xs font-bold uppercase">Delete</span>
             </button>
 
             <motion.div

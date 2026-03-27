@@ -100,7 +100,7 @@ export default function UserPanel({ stats, profile }: UserPanelProps) {
         <div className="flex items-center gap-3">
           <div className="relative">
             <img 
-              src={profile?.role === 'user' ? 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop' : (profile?.photo || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin')} 
+              src={profile?.role === 'user' ? '/profile.png' : (profile?.photo || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin')} 
               alt={profile?.name} 
               className="w-12 h-12 rounded-full border-2 border-white shadow-lg object-cover" 
               referrerPolicy="no-referrer"
