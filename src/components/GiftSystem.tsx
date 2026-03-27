@@ -39,7 +39,7 @@ interface GiftSystemProps {
 }
 
 export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCount, onClose }: GiftSystemProps) {
-  const [revealingGiftSet, setRevealingGiftSet] = useState<GiftSet | null>(null);
+  const [revealingGiftSet, setRevealingGiftSet] = useState<GiftSet | null>(activeGiftSet);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [revealPhase, setRevealPhase] = useState<'idle' | 'flipping' | 'won' | 'revealing' | 'revealOthers' | 'complete'>('idle');
 

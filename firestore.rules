@@ -108,7 +108,7 @@ service cloud.firestore {
     match /giftSets/{id} {
       allow read: if isAuthenticated();
       allow create: if isAdmin();
-      allow update: if isAdmin() || (isAuthenticated() && hasOnlyAllowedFields(['unlocked']) && request.resource.data.unlocked == true);
+      allow update: if isAdmin() || (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unlocked']) && request.resource.data.unlocked == true);
       allow delete: if isAdmin();
     }
 

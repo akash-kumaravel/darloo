@@ -41,9 +41,20 @@ import Scrapbook from './components/Scrapbook';
 import MemoryVault from './components/MemoryVault';
 import Navigation from './components/Navigation';
 import Splash from './components/Splash';
+import ErrorBoundary from './components/ErrorBoundary';
 import { MoodProvider } from './context/MoodContext';
 
 export default function App() {
+  return (
+    <ErrorBoundary>
+      <MoodProvider>
+        <AppContent />
+      </MoodProvider>
+    </ErrorBoundary>
+  );
+}
+
+function AppContent() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<GameStats | null>(null);
@@ -303,9 +314,8 @@ export default function App() {
   }
 
   return (
-    <MoodProvider>
-      <div className="min-h-screen cinematic-gradient pb-24 overflow-x-hidden">
-        <AnimatePresence mode="wait">
+    <div className="min-h-screen cinematic-gradient pb-24 overflow-x-hidden">
+      <AnimatePresence mode="wait">
           {activeTab === 'home' && (
             <motion.div
               key="home"
@@ -400,9 +410,8 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
-        <Toaster position="top-center" richColors />
-      </div>
-    </MoodProvider>
+      <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
+      <Toaster position="top-center" richColors />
+    </div>
   );
 }
