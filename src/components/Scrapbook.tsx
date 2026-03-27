@@ -35,7 +35,7 @@ export default function Scrapbook() {
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black tracking-tighter">SCRAPBOOK</h1>
+          <h1 className="text-3xl font-black tracking-tighter">MY GIFTS</h1>
           <p className="text-slate-500 text-sm font-medium">Your Unlocked Treasures</p>
         </div>
         <div className="bg-primary/10 p-3 rounded-2xl">

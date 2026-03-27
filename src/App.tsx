@@ -367,7 +367,7 @@ function AppContent() {
               <div className="glass rounded-3xl p-8 text-center">
                 <div className="relative inline-block">
                   <img 
-                    src={profile?.role === 'user' ? 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop' : (profile?.photo || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin')} 
+                    src={profile?.role === 'user' ? '/profile.png' : (profile?.photo || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin')} 
                     alt={profile?.name} 
                     className="w-24 h-24 rounded-full border-4 border-white shadow-xl mx-auto object-cover" 
                     referrerPolicy="no-referrer"
