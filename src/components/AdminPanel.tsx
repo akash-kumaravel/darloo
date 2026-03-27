@@ -31,7 +31,7 @@ import {
   deleteDoc
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { GameStats, UserProfile, DailyMessage, NextEvent, UserMood, ChoiceResponse, GiftSet } from '../types';
+import { GameStats, UserProfile, DailyMessage, NextEvent, UserMood, ChoiceResponse, ChoiceMoment, GiftSet } from '../types';
 import { toast } from 'sonner';
 import StarReactor from './StarReactor';
 import { handleFirestoreError, OperationType } from '../lib/firestore-error';
@@ -54,6 +54,7 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   const [showGiftForm, setShowGiftForm] = useState(false);
   const [userMoods, setUserMoods] = useState<UserMood[]>([]);
   const [choiceResponses, setChoiceResponses] = useState<ChoiceResponse[]>([]);
+  const [choiceMoments, setChoiceMoments] = useState<ChoiceMoment[]>([]);
   const [showChoiceForm, setShowChoiceForm] = useState(false);
   const [existingGiftSets, setExistingGiftSets] = useState<GiftSet[]>([]);
   const [rewardedResponses, setRewardedResponses] = useState<Set<string>>(new Set());
@@ -101,9 +102,21 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
       }
     );
 
+    const unsubscribeMoments = onSnapshot(
+      query(collection(db, 'choiceMoments'), orderBy('createdAt', 'desc')),
+      (snap) => {
+        const moments = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChoiceMoment));
+        setChoiceMoments(moments);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'choiceMoments');
+      }
+    );
+
     return () => {
       unsubscribeMoods();
       unsubscribeResponses();
+      unsubscribeMoments();
     };
   }, []);
 
@@ -324,6 +337,26 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
     }
   };
 
+  const deleteNextEvent = async () => {
+    try {
+      await deleteDoc(doc(db, 'events', 'next'));
+      toast.success('Next event deleted.');
+      setEventName('');
+      setEventDate('');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'events/next');
+    }
+  };
+
+  const deleteChoiceMoment = async (momentId: string) => {
+    try {
+      await deleteDoc(doc(db, 'choiceMoments', momentId));
+      toast.success('Interactive moment deleted! 🗑️');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `choiceMoments/${momentId}`);
+    }
+  };
+
   const resetAllStats = async () => {
     try {
       const statsRef = doc(db, 'stats', 'global');
@@ -468,6 +501,37 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
         </div>
       </div>
 
+      {/* Choice Moments Management */}
+      <div className="glass rounded-3xl p-6 space-y-4">
+        <div className="flex items-center gap-3 text-primary font-bold">
+          <Sparkles className="w-5 h-5" />
+          Interactive Moments
+        </div>
+        <div className="space-y-3">
+          {choiceMoments.length === 0 ? (
+            <p className="text-xs text-slate-400 italic">No interactive moments yet...</p>
+          ) : (
+            choiceMoments.map((moment) => (
+              <div key={moment.id} className="bg-white/30 p-4 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-black text-slate-700">{moment.question}</div>
+                    <div className="text-[10px] text-slate-400 uppercase font-bold tracking-tighter">{moment.active ? 'Active' : 'Inactive'} • {new Date(moment.createdAt).toLocaleString()}</div>
+                  </div>
+                  <button
+                    onClick={() => deleteChoiceMoment(moment.id)}
+                    className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold uppercase transition-all bg-red-100 text-red-700 hover:bg-red-200 shadow-sm"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete Moment
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-6">
         {/* Daily Message */}
         <div className="glass rounded-3xl p-6 space-y-4">
@@ -537,13 +601,21 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
               </div>
             </div>
 
-            <button 
-              onClick={updateNextEvent}
-              className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-sm uppercase tracking-[0.2em] shadow-2xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 group"
-            >
-              <span>Schedule Event</span>
-              <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            </button>
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={updateNextEvent}
+                className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-sm uppercase tracking-[0.2em] shadow-2xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 group"
+              >
+                <span>Schedule Event</span>
+                <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </button>
+              <button
+                onClick={deleteNextEvent}
+                className="w-full bg-rose-500/20 text-rose-700 py-3 rounded-2xl font-black text-sm uppercase tracking-[0.2em] hover:bg-rose-500/30 transition-all"
+              >
+                Delete Scheduled Event
+              </button>
+            </div>
           </div>
         </div>
 
