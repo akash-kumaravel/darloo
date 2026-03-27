@@ -330,7 +330,7 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-black tracking-tighter">GAME MASTER</h1>
-          <p className="text-slate-500 text-sm font-medium">Control the Loveverse</p>
+          <p className="text-slate-500 text-sm font-medium">Control the starfall</p>
         </div>
         <div className="bg-primary/10 p-3 rounded-2xl">
           <Settings className="text-primary w-6 h-6" />

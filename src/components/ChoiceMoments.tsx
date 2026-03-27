@@ -34,7 +34,7 @@ export default function ChoiceMoments() {
       try {
         await addDoc(collection(db, 'choiceResponses'), {
           userId: user.uid,
-          userName: user.email === 'admin@loveverse.com' ? 'Admin' : 'Darloo',
+          userName: user.email === 'admin@starfall.com' ? 'Admin' : 'Darloo',
           momentId: activeMoment.id,
           question: activeMoment.question,
           choiceLabel: option.label,

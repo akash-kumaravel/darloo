@@ -31,7 +31,7 @@ export default function Splash() {
         transition={{ delay: 0.5 }}
         className="text-4xl font-bold mt-8 tracking-tighter text-slate-800"
       >
-        LOVEVERSE
+        starfall
       </motion.h1>
       <motion.div
         initial={{ width: 0 }}

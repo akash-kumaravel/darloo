@@ -85,13 +85,13 @@ export default function App() {
       const newProfile: UserProfile = {
         uid: firebaseUser.uid,
         name: name,
-        email: role === 'admin' ? 'admin@loveverse.com' : 'darloo@loveverse.com',
+        email: role === 'admin' ? 'admin@starfall.com' : 'darloo@starfall.com',
         role: role,
         photo: role === 'admin' ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin' : 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop',
       };
       await firebaseSetDoc(doc(db, 'users', firebaseUser.uid), newProfile);
       setProfile(newProfile);
-      toast.success(`Welcome to LOVEVERSE, ${name} ❤️`);
+      toast.success(`Welcome to starfall, ${name} ❤️`);
     } catch (error: any) {
       if (error.code === 'auth/admin-restricted-operation') {
         toast.error('Anonymous Auth is disabled. Please enable it in Firebase Console.', {
@@ -180,7 +180,7 @@ export default function App() {
               <Star className="w-6 h-6 text-yellow-400 fill-yellow-400" />
             </motion.div>
           </div>
-          <h1 className="text-4xl font-bold mt-6 tracking-tighter text-slate-800">LOVEVERSE</h1>
+          <h1 className="text-4xl font-bold mt-6 tracking-tighter text-slate-800">starfall</h1>
           <p className="text-slate-500 mt-2 font-medium">A Private Cinematic Love Game</p>
         </motion.div>
 
@@ -281,7 +281,7 @@ export default function App() {
               type="submit"
               className="w-full bg-primary text-white py-4 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
             >
-              Enter Loveverse
+              Enter starfall
             </button>
             
             <button 

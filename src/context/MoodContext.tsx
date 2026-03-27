@@ -79,7 +79,7 @@ export function MoodProvider({ children }: { children: React.ReactNode }) {
     try {
       await setDoc(doc(db, 'moods', user.uid), {
         userId: user.uid,
-        userName: user.email === 'admin@loveverse.com' ? 'Admin' : 'Darloo',
+        userName: user.email === 'admin@starfall.com' ? 'Admin' : 'Darloo',
         mood,
         updatedAt: new Date().toISOString()
       });
