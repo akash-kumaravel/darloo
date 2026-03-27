@@ -160,7 +160,7 @@ export default function UserPanel({ stats, profile }: UserPanelProps) {
 
       {/* Gift System Modal */}
       <AnimatePresence>
-        {showGiftModal && activeGiftSet && (
+        {showGiftModal && (
           <GiftSystem 
             activeGiftSet={activeGiftSet}
             totalStars={stats?.totalStars || 0}
