@@ -27,7 +27,6 @@ export default function ChoiceMoments() {
 
   const handleChoice = async (option: ChoiceOption) => {
     setSelectedOption(option);
-    setShowResponse(true);
 
     const user = auth.currentUser;
     if (user && activeMoment) {
@@ -46,18 +45,16 @@ export default function ChoiceMoments() {
       }
     }
 
-    // Reward the user
-    if (option.reward > 0) {
-      const statsRef = doc(db, 'stats', 'global');
-      try {
-        await updateDoc(statsRef, {
-          totalStars: increment(option.reward),
-          xp: increment(option.reward * 10)
-        });
-        toast.success(`Bonus Reward: +${option.reward} Stars! ✨`);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.UPDATE, 'stats/global');
-      }
+    // Award 1 star for making a choice
+    const statsRef = doc(db, 'stats', 'global');
+    try {
+      await updateDoc(statsRef, {
+        totalStars: increment(1),
+        xp: increment(10)
+      });
+      toast.success(`+1 Star! ✨`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'stats/global');
     }
 
     // Deactivate the moment after a choice is made (optional, maybe it's a one-time thing)

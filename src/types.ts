@@ -91,4 +91,5 @@ export interface ChoiceResponse {
   choiceLabel: string;
   choiceEmoji: string;
   createdAt: string;
+  rewarded?: boolean;
 }

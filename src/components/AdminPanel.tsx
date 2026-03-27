@@ -12,7 +12,8 @@ import {
   Settings,
   X,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  Star
 } from 'lucide-react';
 import { 
   doc, 
@@ -25,7 +26,8 @@ import {
   orderBy,
   limit,
   getDocs,
-  where
+  where,
+  increment
 } from 'firebase/firestore';
 import { db, storage } from '../firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
@@ -53,6 +55,7 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   const [choiceResponses, setChoiceResponses] = useState<ChoiceResponse[]>([]);
   const [showChoiceForm, setShowChoiceForm] = useState(false);
   const [existingGiftSets, setExistingGiftSets] = useState<GiftSet[]>([]);
+  const [rewardedResponses, setRewardedResponses] = useState<Set<string>>(new Set());
 
   // Choice Moment Form State
   const [choiceQuestion, setChoiceQuestion] = useState('');
@@ -89,6 +92,11 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
       (snap) => {
         const responses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChoiceResponse));
         setChoiceResponses(responses);
+        // Track which responses have been rewarded
+        const rewarded = new Set(
+          responses.filter(r => r.rewarded).map(r => r.id)
+        );
+        setRewardedResponses(rewarded);
       }
     );
 
@@ -325,6 +333,33 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
     }
   };
 
+  const rewardChoiceResponse = async (response: ChoiceResponse) => {
+    if (rewardedResponses.has(response.id)) {
+      toast.error('Already rewarded this choice');
+      return;
+    }
+
+    try {
+      // Award 1 star to the user's stats
+      const statsRef = doc(db, 'stats', 'global');
+      await updateDoc(statsRef, {
+        totalStars: increment(1),
+        xp: increment(10)
+      });
+
+      // Mark the response as rewarded in Firestore
+      await updateDoc(doc(db, 'choiceResponses', response.id), {
+        rewarded: true
+      });
+
+      // Mark the response as rewarded in local state
+      setRewardedResponses(prev => new Set([...prev, response.id]));
+      toast.success(`${response.userName}'s choice rewarded! +1 Star ⭐`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'stats/global');
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -390,17 +425,34 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
             choiceResponses.map((r, i) => (
               <div key={i} className="bg-white/30 p-4 rounded-2xl space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-black text-slate-700">{r.userName}</span>
+                  <div>
+                    <span className="text-sm font-black text-slate-700">{r.userName}</span>
+                    <span className="text-[10px] text-slate-400 font-bold ml-1">(ID: {r.userId.slice(0, 8)}...)</span>
+                  </div>
                   <span className="text-[10px] text-slate-400 font-bold uppercase">
                     {new Date(r.createdAt).toLocaleTimeString()}
                   </span>
                 </div>
                 <div className="text-xs text-slate-500 italic">"{r.question}"</div>
-                <div className="flex items-center gap-2 bg-white/50 p-2 rounded-xl">
-                  <span className="text-lg">{r.choiceEmoji}</span>
-                  <span className="text-xs font-bold text-primary uppercase tracking-widest">
-                    {r.choiceLabel}
-                  </span>
+                <div className="flex items-center justify-between bg-white/50 p-3 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{r.choiceEmoji}</span>
+                    <span className="text-xs font-bold text-primary uppercase tracking-widest">
+                      {r.choiceLabel}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => rewardChoiceResponse(r)}
+                    disabled={rewardedResponses.has(r.id)}
+                    className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold uppercase transition-all ${
+                      rewardedResponses.has(r.id)
+                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 shadow-sm'
+                    }`}
+                  >
+                    <Star className="w-4 h-4" />
+                    Add Star
+                  </button>
                 </div>
               </div>
             ))
