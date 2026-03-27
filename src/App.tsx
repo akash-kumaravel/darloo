@@ -50,8 +50,10 @@ export default function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [showUserLogin, setShowUserLogin] = useState(false);
   const [adminUser, setAdminUser] = useState('');
   const [adminPass, setAdminPass] = useState('');
+  const [userPass, setUserPass] = useState('');
   const [localAuth, setLocalAuth] = useState(false);
 
   useEffect(() => {
@@ -62,8 +64,42 @@ export default function App() {
   // Check localStorage for existing local auth  
   useEffect(() => {
     const savedAuth = localStorage.getItem('loveverse_auth');
+    const savedRole = localStorage.getItem('loveverse_role');
     if (savedAuth === 'true') {
       setLocalAuth(true);
+      const loadUserProfile = async () => {
+        try {
+          const userUID = savedRole === 'admin' ? 'admin_user_akash' : 'user_libii';
+          const userDoc = await getDoc(doc(db, 'users', userUID));
+          if (userDoc.exists()) {
+            const userData = userDoc.data() as UserProfile;
+            setProfile(userData);
+            setIsAdminMode(savedRole === 'admin');
+            
+            const mockUser = {
+              uid: userUID,
+              email: userData.email,
+              displayName: userData.name,
+              photoURL: userData.photo,
+              emailVerified: false,
+              isAnonymous: false,
+              metadata: {},
+              providerData: [],
+              phoneNumber: null,
+              tenantId: null,
+              delete: async () => {},
+              getIdToken: async () => '',
+              getIdTokenResult: async () => ({ token: '', expirationTime: '', authTime: '', issuedAtTime: '', signInProvider: null, signInSecondFactor: null, claims: {} }),
+              reload: async () => {},
+              toJSON: () => ({}),
+            } as any;
+            setUser(mockUser);
+          }
+        } catch (error) {
+          console.error('Error loading user profile:', error);
+        }
+      };
+      loadUserProfile();
     }
     setLoading(false);
   }, []);
@@ -101,7 +137,7 @@ export default function App() {
   }, [localAuth]);
 
   useEffect(() => {
-    if (!localAuth || !user) return;
+    if (!localAuth) return;
 
     const initializeStats = async () => {
       try {
@@ -124,50 +160,123 @@ export default function App() {
     });
 
     return () => statsUnsubscribe();
-  }, [user, localAuth]);
+  }, [localAuth]);
 
-  const handleAdminLogin = (e: React.FormEvent) => {
+  const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (adminUser === 'Libii' && adminPass === 'Libii@1109') {
+    if (adminUser === 'Admin' && adminPass === 'Akash@0901') {
       localStorage.setItem('loveverse_auth', 'true');
+      localStorage.setItem('loveverse_role', 'admin');
       setLocalAuth(true);
       setIsAdminMode(true);
       
-      const mockUser = {
-        uid: 'local_user_libii',
-        email: 'libii@loveverse.com',
-        displayName: 'Libii',
-        photoURL: null,
-        emailVerified: false,
-        isAnonymous: false,
-        metadata: {},
-        providerData: [],
-        phoneNumber: null,
-        tenantId: null,
-        delete: async () => {},
-        getIdToken: async () => '',
-        getIdTokenResult: async () => ({ token: '', expirationTime: '', authTime: '', issuedAtTime: '', signInProvider: null, signInSecondFactor: null, claims: {} }),
-        reload: async () => {},
-        toJSON: () => ({}),
-      } as any;
-      
-      setUser(mockUser);
-      setAdminUser('');
-      setAdminPass('');
-      setShowAdminLogin(false);
-      toast.success('Welcome Libii! 💖');
+      const adminUID = 'admin_user_akash';
+      try {
+        const adminProfile: UserProfile = {
+          uid: adminUID,
+          name: 'Admin',
+          email: 'admin@loveverse.com',
+          role: 'admin',
+          photo: '',
+        };
+        
+        await firebaseSetDoc(doc(db, 'users', adminUID), adminProfile);
+        
+        const mockUser = {
+          uid: adminUID,
+          email: 'admin@loveverse.com',
+          displayName: 'Admin',
+          photoURL: '',
+          emailVerified: false,
+          isAnonymous: false,
+          metadata: {},
+          providerData: [],
+          phoneNumber: null,
+          tenantId: null,
+          delete: async () => {},
+          getIdToken: async () => '',
+          getIdTokenResult: async () => ({ token: '', expirationTime: '', authTime: '', issuedAtTime: '', signInProvider: null, signInSecondFactor: null, claims: {} }),
+          reload: async () => {},
+          toJSON: () => ({}),
+        } as any;
+        
+        setUser(mockUser);
+        setProfile(adminProfile);
+        setAdminUser('');
+        setAdminPass('');
+        setShowAdminLogin(false);
+        toast.success('Welcome Admin! 👑');
+      } catch (error) {
+        console.error('Admin login error:', error);
+        toast.error('Failed to set up admin profile');
+      }
     } else {
-      toast.error('Invalid! Libii / Libii@1109');
+      toast.error('Invalid Admin Credentials');
+    }
+  };
+
+  const handleUserLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (userPass === 'Libii@1109') {
+      localStorage.setItem('loveverse_auth', 'true');
+      localStorage.setItem('loveverse_role', 'user');
+      setLocalAuth(true);
+      setIsAdminMode(false);
+      
+      const userUID = 'user_libii';
+      try {
+        const userProfile: UserProfile = {
+          uid: userUID,
+          name: 'Libii',
+          email: 'libii@loveverse.com',
+          role: 'user',
+          photo: '',
+        };
+        
+        await firebaseSetDoc(doc(db, 'users', userUID), userProfile);
+        
+        const mockUser = {
+          uid: userUID,
+          email: 'libii@loveverse.com',
+          displayName: 'Libii',
+          photoURL: '',
+          emailVerified: false,
+          isAnonymous: false,
+          metadata: {},
+          providerData: [],
+          phoneNumber: null,
+          tenantId: null,
+          delete: async () => {},
+          getIdToken: async () => '',
+          getIdTokenResult: async () => ({ token: '', expirationTime: '', authTime: '', issuedAtTime: '', signInProvider: null, signInSecondFactor: null, claims: {} }),
+          reload: async () => {},
+          toJSON: () => ({}),
+        } as any;
+        
+        setUser(mockUser);
+        setProfile(userProfile);
+        setUserPass('');
+        setShowUserLogin(false);
+        toast.success('Welcome Libii! 💖');
+      } catch (error) {
+        console.error('User login error:', error);
+        toast.error('Failed to set up user profile');
+      }
+    } else {
+      toast.error('Invalid Password');
     }
   };
 
   const handleLogout = () => {
     localStorage.removeItem('loveverse_auth');
+    localStorage.removeItem('loveverse_role');
     setLocalAuth(false);
     setUser(null);
     setProfile(null);
     setIsAdminMode(false);
     setActiveTab('home');
+    setShowAdminLogin(false);
+    setShowUserLogin(false);
   };
 
   if (showSplash) return <Splash />;
@@ -195,36 +304,102 @@ export default function App() {
           <p className="text-slate-500 mt-2 font-medium">A Private Cinematic Love Game</p>
         </motion.div>
 
-        <motion.form 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          onSubmit={handleAdminLogin}
-          className="w-full max-w-xs glass p-6 rounded-3xl space-y-4"
-        >
-          <div className="text-sm font-black text-primary uppercase tracking-widest mb-4">Unlock Your Heart</div>
-          <input 
-            type="text" 
-            placeholder="Username" 
-            value={adminUser}
-            onChange={(e) => setAdminUser(e.target.value)}
-            autoComplete="off"
-            className="w-full bg-white/50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 ring-primary text-sm"
-          />
-          <input 
-            type="password" 
-            placeholder="Password" 
-            value={adminPass}
-            onChange={(e) => setAdminPass(e.target.value)}
-            autoComplete="off"
-            className="w-full bg-white/50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 ring-primary text-sm"
-          />
-          <button 
-            type="submit"
-            className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all"
+        {!showAdminLogin && !showUserLogin ? (
+          <div className="w-full max-w-xs space-y-4">
+            <button 
+              onClick={() => setShowAdminLogin(true)}
+              className="w-full bg-gradient-to-r from-purple-600 to-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-purple-500/40 hover:shadow-purple-500/60 transition-all"
+            >
+              👑 Admin Login
+            </button>
+            <button 
+              onClick={() => setShowUserLogin(true)}
+              className="w-full bg-gradient-to-r from-primary to-pink-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/40 hover:shadow-primary/60 transition-all"
+            >
+              💖 User Login
+            </button>
+          </div>
+        ) : null}
+
+        {showAdminLogin && (
+          <motion.form 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            onSubmit={handleAdminLogin}
+            className="w-full max-w-xs glass p-6 rounded-3xl space-y-4"
           >
-            Enter App
-          </button>
-        </motion.form>
+            <div className="text-sm font-black text-primary uppercase tracking-widest mb-4">👑 Admin Console</div>
+            <input 
+              type="text" 
+              placeholder="Username" 
+              value={adminUser}
+              onChange={(e) => setAdminUser(e.target.value)}
+              autoComplete="off"
+              className="w-full bg-white/50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 ring-primary text-sm"
+            />
+            <input 
+              type="password" 
+              placeholder="Password" 
+              value={adminPass}
+              onChange={(e) => setAdminPass(e.target.value)}
+              autoComplete="off"
+              className="w-full bg-white/50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 ring-primary text-sm"
+            />
+            <button 
+              type="submit"
+              className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all"
+            >
+              Enter Admin
+            </button>
+            <button 
+              type="button"
+              onClick={() => {
+                setShowAdminLogin(false);
+                setAdminUser('');
+                setAdminPass('');
+              }}
+              className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600"
+            >
+              Back
+            </button>
+          </motion.form>
+        )}
+
+        {showUserLogin && (
+          <motion.form 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            onSubmit={handleUserLogin}
+            className="w-full max-w-xs glass p-6 rounded-3xl space-y-4"
+          >
+            <div className="text-sm font-black text-primary uppercase tracking-widest mb-4">💖 Enter Heart</div>
+            <div className="text-center font-bold text-slate-700">Welcome Libii</div>
+            <input 
+              type="password" 
+              placeholder="Password" 
+              value={userPass}
+              onChange={(e) => setUserPass(e.target.value)}
+              autoComplete="off"
+              className="w-full bg-white/50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 ring-primary text-sm"
+            />
+            <button 
+              type="submit"
+              className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all"
+            >
+              Enter App
+            </button>
+            <button 
+              type="button"
+              onClick={() => {
+                setShowUserLogin(false);
+                setUserPass('');
+              }}
+              className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600"
+            >
+              Back
+            </button>
+          </motion.form>
+        )}
 
         <div className="mt-8 text-xs text-slate-400 uppercase tracking-widest font-bold">
           For Two Hearts Only ❤️
@@ -307,13 +482,25 @@ export default function App() {
                     <Heart className="w-4 h-4 text-white fill-white" />
                   </div>
                 </div>
-                <h2 className="text-2xl font-bold mt-4">Libii</h2>
-                <p className="text-slate-500">libii@loveverse.com</p>
+                <h2 className="text-2xl font-bold mt-4">{profile?.name || 'Libii'}</h2>
+                <p className="text-slate-500">{profile?.email || 'libii@loveverse.com'}</p>
                 <div className="mt-6 inline-block px-4 py-1 bg-primary/10 text-primary rounded-full text-sm font-bold uppercase tracking-wider">
-                  User
+                  {profile?.role === 'admin' ? '👑 Admin' : 'User'}
                 </div>
 
                 <div className="mt-12 space-y-4">
+                  {profile?.role === 'admin' && (
+                    <button 
+                      onClick={() => setIsAdminMode(!isAdminMode)}
+                      className="w-full py-4 glass rounded-2xl flex items-center justify-between px-6 font-bold text-slate-700 hover:bg-primary/10 transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Settings className="w-5 h-5 text-primary" />
+                        {isAdminMode ? 'Switch to Player View' : 'Switch to Admin View'}
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-primary" />
+                    </button>
+                  )}
                   <button 
                     onClick={handleLogout}
                     className="w-full py-4 glass rounded-2xl flex items-center justify-between px-6 font-bold text-red-500 hover:bg-red-500/10 transition-all"
