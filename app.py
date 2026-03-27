@@ -6,6 +6,7 @@ import requests
 from dotenv import load_dotenv
 from datetime import datetime
 import uuid
+import json
 
 load_dotenv()
 
@@ -21,6 +22,29 @@ GITHUB_IMAGE_PATH = os.getenv('GITHUB_IMAGE_PATH', 'images')
 # Hugging Face configuration
 HF_API_TOKEN = os.getenv('HF_API_TOKEN')
 HF_API_URL = os.getenv('HF_API_URL', 'https://api-inference.huggingface.co/models')
+
+# Star data file (persistent storage)
+STARS_FILE = 'stars_data.json'
+
+def load_stars():
+    """Load stars from file"""
+    if os.path.exists(STARS_FILE):
+        try:
+            with open(STARS_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return {'total': 0, 'history': []}
+    return {'total': 0, 'history': []}
+
+def save_stars(data):
+    """Save stars to file"""
+    try:
+        with open(STARS_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error saving stars: {str(e)}")
+        return False
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -244,8 +268,139 @@ def call_huggingface_vision_api(image_bytes):
         print(f"Error calling Hugging Face Vision API: {str(e)}")
         return None
 
-@app.route('/', methods=['GET'])
-def index():
+# =============== STAR MANAGEMENT ENDPOINTS ===============
+
+@app.route('/api/stars', methods=['GET'])
+def get_stars():
+    """Get current star count"""
+    try:
+        stars_data = load_stars()
+        return jsonify({
+            'success': True,
+            'total': stars_data.get('total', 0),
+            'history': stars_data.get('history', [])
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/stars/add', methods=['POST'])
+def add_stars():
+    """Add stars (increases current count)"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'amount' not in data:
+            return jsonify({'error': 'No amount provided'}), 400
+        
+        amount = int(data['amount'])
+        reason = data.get('reason', 'Admin reward')
+        
+        # Load current stars
+        stars_data = load_stars()
+        new_total = stars_data.get('total', 0) + amount
+        
+        # Add to history
+        if 'history' not in stars_data:
+            stars_data['history'] = []
+        
+        stars_data['history'].append({
+            'timestamp': datetime.now().isoformat(),
+            'amount': amount,
+            'reason': reason,
+            'running_total': new_total
+        })
+        
+        # Update total
+        stars_data['total'] = new_total
+        
+        # Save
+        if save_stars(stars_data):
+            return jsonify({
+                'success': True,
+                'total': new_total,
+                'message': f'Added {amount} stars!'
+            }), 200
+        else:
+            return jsonify({'error': 'Failed to save stars'}), 500
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/stars/set', methods=['POST'])
+def set_stars():
+    """Set total stars to a specific value"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'total' not in data:
+            return jsonify({'error': 'No total provided'}), 400
+        
+        new_total = int(data['total'])
+        reason = data.get('reason', 'Admin set')
+        
+        # Load current stars
+        stars_data = load_stars()
+        old_total = stars_data.get('total', 0)
+        
+        # Add to history
+        if 'history' not in stars_data:
+            stars_data['history'] = []
+        
+        stars_data['history'].append({
+            'timestamp': datetime.now().isoformat(),
+            'type': 'set',
+            'old_total': old_total,
+            'new_total': new_total,
+            'reason': reason
+        })
+        
+        # Update total
+        stars_data['total'] = new_total
+        
+        # Save
+        if save_stars(stars_data):
+            return jsonify({
+                'success': True,
+                'total': new_total,
+                'message': f'Stars set to {new_total}!'
+            }), 200
+        else:
+            return jsonify({'error': 'Failed to save stars'}), 500
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/stars/reset', methods=['POST'])
+def reset_stars():
+    """Reset stars to 0"""
+    try:
+        stars_data = load_stars()
+        
+        # Add to history
+        if 'history' not in stars_data:
+            stars_data['history'] = []
+        
+        stars_data['history'].append({
+            'timestamp': datetime.now().isoformat(),
+            'type': 'reset',
+            'reason': 'Admin reset'
+        })
+        
+        # Reset total
+        stars_data['total'] = 0
+        
+        # Save
+        if save_stars(stars_data):
+            return jsonify({
+                'success': True,
+                'total': 0,
+                'message': 'Stars reset!'
+            }), 200
+        else:
+            return jsonify({'error': 'Failed to save stars'}), 500
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
     """Welcome endpoint"""
     return jsonify({
         'name': 'LOVEVERSE Server',

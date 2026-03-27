@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { cn } from './lib/utils';
+import { getStars } from './services/api';
 
 // Components
 import AdminPanel from './components/AdminPanel';
@@ -87,7 +88,7 @@ export default function App() {
     setLoading(false);
   }, []);
 
-  const handleAdminLogin = (e: React.FormEvent) => {
+  const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (adminUser === 'Admin' && adminPass === 'Akash@0901') {
       const adminProfile: UserProfile = {
@@ -101,6 +102,16 @@ export default function App() {
       localStorage.setItem('loveverse_auth', 'true');
       localStorage.setItem('loveverse_role', 'admin');
       localStorage.setItem('loveverse_profile', JSON.stringify(adminProfile));
+      
+      // Fetch stars from server
+      const serverStars = await getStars();
+      const newStats: GameStats = {
+        totalStars: serverStars,
+        level: 1,
+        xp: 0
+      };
+      setStats(newStats);
+      localStorage.setItem('loveverse_stats', JSON.stringify(newStats));
       
       const mockUser = {
         uid: 'admin_user_akash',
@@ -132,7 +143,7 @@ export default function App() {
     }
   };
 
-  const handleUserLogin = (e: React.FormEvent) => {
+  const handleUserLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (userPass === 'Libii@1109') {
       const userProfile: UserProfile = {
@@ -146,6 +157,16 @@ export default function App() {
       localStorage.setItem('loveverse_auth', 'true');
       localStorage.setItem('loveverse_role', 'user');
       localStorage.setItem('loveverse_profile', JSON.stringify(userProfile));
+      
+      // Fetch stars from server
+      const serverStars = await getStars();
+      const newStats: GameStats = {
+        totalStars: serverStars,
+        level: 1,
+        xp: 0
+      };
+      setStats(newStats);
+      localStorage.setItem('loveverse_stats', JSON.stringify(newStats));
       
       const mockUser = {
         uid: 'user_libii',

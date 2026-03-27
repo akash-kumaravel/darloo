@@ -152,3 +152,126 @@ export async function checkServerHealth(): Promise<boolean> {
     return false;
   }
 }
+
+// =============== STAR MANAGEMENT FUNCTIONS ===============
+
+interface StarsResponse {
+  success: boolean;
+  total: number;
+  history?: any[];
+  message?: string;
+  error?: string;
+}
+
+/**
+ * Get current star count from server
+ */
+export async function getStars(): Promise<number> {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/stars`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json() as StarsResponse;
+    return data.total || 0;
+  } catch (error) {
+    console.error('Get stars error:', error);
+    return 0;
+  }
+}
+
+/**
+ * Add stars to current count
+ */
+export async function addStars(amount: number, reason: string = 'Reward'): Promise<StarsResponse> {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/stars/add`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        amount,
+        reason,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Add stars error:', error);
+    return {
+      success: false,
+      total: 0,
+      error: String(error),
+    };
+  }
+}
+
+/**
+ * Set stars to a specific value
+ */
+export async function setStars(total: number, reason: string = 'Admin set'): Promise<StarsResponse> {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/stars/set`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        total,
+        reason,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Set stars error:', error);
+    return {
+      success: false,
+      total: 0,
+      error: String(error),
+    };
+  }
+}
+
+/**
+ * Reset stars to 0
+ */
+export async function resetStars(): Promise<StarsResponse> {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/stars/reset`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Reset stars error:', error);
+    return {
+      success: false,
+      total: 0,
+      error: String(error),
+    };
+  }
+}
