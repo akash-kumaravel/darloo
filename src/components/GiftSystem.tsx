@@ -2,22 +2,9 @@ import { cn } from '../lib/utils';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Lock, Gift, Sparkles, ChevronRight, Heart, Image as ImageIcon, Plus, X, Loader2 } from 'lucide-react';
-import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot, 
-  doc, 
-  updateDoc, 
-  addDoc,
-  orderBy,
-  limit
-} from 'firebase/firestore';
-import { db, auth } from '../firebase';
 import { GiftSet, GiftOption } from '../types';
 import { toast } from 'sonner';
 import confetti from 'canvas-confetti';
-import { handleFirestoreError, OperationType } from '../lib/firestore-error';
 import { uploadImage, fileToBase64 } from '../services/api';
 
 interface GiftSystemProps {
@@ -53,40 +40,33 @@ export default function GiftSystem({ totalStars, giftOpenRequest = false, onGift
   const [activeGiftSet, setActiveGiftSet] = useState<GiftSet | null>(null);
   const [showUnlock, setShowUnlock] = useState(false);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
-  const [revealPhase, setRevealPhase] = useState<R
+  const [revealPhase, setRevealPhase] = useState<RevealPhase>('idle');
   const [showCreateGift, setShowCreateGift] = useState(false);
   const [giftTitle, setGiftTitle] = useState('');
   const [giftMessage, setGiftMessage] = useState('');
   const [giftImage, setGiftImage] = useState<File | null>(null);
   const [creationPhase, setCreationPhase] = useState<GiftCreationPhase>('idle');
-  const fileInputRef = useRef<HTMLInputElement>(null);evealPhase>('idle');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isLocked, setIsLocked] = useState(false);
 
   // Calculate if gift is ready (every 25 stars: 25, 50, 75, etc.)
   const starsInCycle = totalStars % 25;
   const isGiftReady = starsInCycle === 0 && totalStars > 0;
 
+  // Load gifts from localStorage instead of Firebase
   useEffect(() => {
-    const q = query(
-      collection(db, 'giftSets'), 
-      where('unlocked', '==', false),
-      orderBy('createdAt', 'desc'),
-      limit(1)
-    );
-
-    const unsubscribe = onSnapshot(q, (snap) => {
-      if (!snap.empty) {
-        const data = { id: snap.docs[0].id, ...snap.docs[0].data() } as GiftSet;
-        setActiveGiftSet(data);
-      } else {
+    const savedGifts = localStorage.getItem('loveverse_gifts');
+    if (savedGifts) {
+      try {
+        const gifts = JSON.parse(savedGifts) as GiftSet[];
+        // Get first unlocked gift
+        const nextGift = gifts.find(g => !g.unlocked);
+        setActiveGiftSet(nextGift || null);
+      } catch (error) {
+        console.error('Error loading gifts:', error);
         setActiveGiftSet(null);
       }
-    }, (error) => {
-      console.error('Gift sets snapshot error:', error);
-      handleFirestoreError(error, OperationType.GET, 'giftSets');
-    });
-
-    return () => unsubscribe();
+    }
   }, []);
 
   const isUnlockable = isGiftReady && activeGiftSet;
@@ -152,22 +132,33 @@ export default function GiftSystem({ totalStars, giftOpenRequest = false, onGift
     }, 5500);
 
     try {
-      // Add to collection
-      const path = 'collection';
-      await addDoc(collection(db, path), {
-        userId: auth.currentUser?.uid,
+      // Save to scrapbook collection in localStorage
+      const savedScrapbook = localStorage.getItem('loveverse_scrapbook');
+      const scrapbook = savedScrapbook ? JSON.parse(savedScrapbook) : [];
+      
+      scrapbook.push({
+        id: Date.now().toString(),
         title: option.title,
         message: option.message,
         image: option.image,
         date: new Date().toISOString()
       });
+      
+      localStorage.setItem('loveverse_scrapbook', JSON.stringify(scrapbook));
 
       // Mark gift set as unlocked
-      await updateDoc(doc(db, 'giftSets', activeGiftSet.id), {
-        unlocked: true
-      });
+      const savedGifts = localStorage.getItem('loveverse_gifts');
+      if (savedGifts) {
+        const gifts = JSON.parse(savedGifts) as GiftSet[];
+        const updatedGifts = gifts.map(g => 
+          g.id === activeGiftSet.id ? { ...g, unlocked: true } : g
+        );
+        localStorage.setItem('loveverse_gifts', JSON.stringify(updatedGifts));
+      }
+      
+      toast.success('Gift added to scrapbook! 📸');
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'giftSets/collection');
+      console.error('Error saving gift:', error);
       toast.error('Failed to save gift to scrapbook');
       setIsLocked(false);
     }
@@ -196,13 +187,17 @@ export default function GiftSystem({ totalStars, giftOpenRequest = false, onGift
       const uploadResponse = await uploadImage(base64, `gift_${Date.now()}_${giftImage.name}`);
       
       if (!uploadResponse.success) {
-        toast.error('Failed to upload gift image to GitHub');
+        toast.error('Failed to upload gift image to server');
         setCreationPhase('idle');
         return;
       }
 
-      // Create gift set
-      await addDoc(collection(db, 'giftSets'), {
+      // Create gift set in localStorage
+      const savedGifts = localStorage.getItem('loveverse_gifts');
+      const gifts: GiftSet[] = savedGifts ? JSON.parse(savedGifts) : [];
+      
+      const newGift: GiftSet = {
+        id: Date.now().toString(),
         option1: {
           title: giftTitle,
           message: giftMessage,
@@ -219,9 +214,11 @@ export default function GiftSystem({ totalStars, giftOpenRequest = false, onGift
           image: uploadResponse.url
         },
         unlocked: false,
-        createdAt: new Date().toISOString(),
-        userId: auth.currentUser?.uid
-      });
+        createdAt: new Date().toISOString()
+      };
+      
+      gifts.push(newGift);
+      localStorage.setItem('loveverse_gifts', JSON.stringify(gifts));
 
       toast.success('Gift created! 🎁 (Image stored permanently on GitHub)');
       setCreationPhase('complete');
@@ -237,7 +234,6 @@ export default function GiftSystem({ totalStars, giftOpenRequest = false, onGift
     } catch (error) {
       console.error('Gift creation error:', error);
       toast.error('Failed to create gift');
-      handleFirestoreError(error, OperationType.CREATE, 'giftSets');
       setCreationPhase('idle');
     }
   };

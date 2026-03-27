@@ -191,7 +191,7 @@ export default function App() {
   if (showSplash) return <Splash />;
   if (loading) return <div className="h-screen w-screen flex items-center justify-center cinematic-gradient"><Heart className="text-primary animate-pulse w-12 h-12" /></div>;
 
-  if (!isLoggedIn) {
+  if (!user || !profile) {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center cinematic-gradient p-6 text-center">
         <motion.div 

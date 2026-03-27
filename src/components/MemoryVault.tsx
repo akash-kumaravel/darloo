@@ -1,10 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Camera, Heart, Maximize2, X, Plus, Image as ImageIcon, Send, Loader2 } from 'lucide-react';
-import { collection, query, onSnapshot, orderBy, addDoc } from 'firebase/firestore';
-import { db, auth } from '../firebase';
 import { Memory } from '../types';
-import { handleFirestoreError, OperationType } from '../lib/firestore-error';
 import { uploadImage, fileToBase64 } from '../services/api';
 import { toast } from 'sonner';
 
@@ -19,17 +16,19 @@ export default function MemoryVault() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const path = 'memories';
-    const q = query(collection(db, path), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Memory));
-      setMemories(docs);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, path);
-    });
-
-    return () => unsubscribe();
+    // Load memories from localStorage
+    const savedMemories = localStorage.getItem('loveverse_memories');
+    if (savedMemories) {
+      try {
+        const memoryList: Memory[] = JSON.parse(savedMemories);
+        // Sort by date descending
+        memoryList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setMemories(memoryList);
+      } catch (error) {
+        console.error('Error loading memories:', error);
+      }
+    }
+    setLoading(false);
   }, []);
 
   const handleUpload = async () => {
@@ -48,31 +47,39 @@ export default function MemoryVault() {
       // Convert file to base64
       const base64 = await fileToBase64(image);
       
-      // Upload to GitHub
+      // Upload to server
       const uploadResponse = await uploadImage(base64, `memory_${Date.now()}_${image.name}`);
       
       if (!uploadResponse.success) {
-        toast.error('Failed to upload image to GitHub');
+        toast.error('Failed to upload image to server');
         return;
       }
 
-      // Save metadata to Firestore with GitHub URL
-      await addDoc(collection(db, 'memories'), {
+      // Save memory to localStorage
+      const savedMemories = localStorage.getItem('loveverse_memories');
+      const memories: Memory[] = savedMemories ? JSON.parse(savedMemories) : [];
+      
+      const newMemory: Memory = {
+        id: Date.now().toString(),
         image: uploadResponse.url,
         caption: caption,
         createdAt: new Date().toISOString(),
-        userId: auth.currentUser?.uid,
         filename: uploadResponse.filename
-      });
+      };
+      
+      memories.push(newMemory);
+      localStorage.setItem('loveverse_memories', JSON.stringify(memories));
 
-      toast.success('Memory saved! 📸 (Stored on GitHub)');
+      toast.success('Memory saved! 📸 (Stored on server)');
       setCaption('');
       setImage(null);
       setShowUpload(false);
+      
+      // Update local state
+      setMemories([newMemory, ...memories]);
     } catch (error) {
       console.error('Memory upload error:', error);
       toast.error('Failed to upload memory');
-      handleFirestoreError(error, OperationType.CREATE, 'memories');
     } finally {
       setIsUploading(false);
     }
