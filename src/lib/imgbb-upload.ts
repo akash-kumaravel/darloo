@@ -6,11 +6,17 @@ export const uploadToImgbb = async (file: File): Promise<string> => {
   console.log('🔄 Starting Imgbb upload...');
   console.log('File:', file.name, 'Size:', file.size);
   
-  const apiKey = import.meta.env.VITE_IMGBB_API_KEY;
+  // Try multiple ways to get the API key
+  const apiKey = 
+    import.meta.env.VITE_IMGBB_API_KEY ||
+    (process.env as any).VITE_IMGBB_API_KEY ||
+    '0b064a9926765c9f265e329856b5c1f8'; // Fallback for development
+  
   console.log('API Key configured:', !!apiKey);
+  console.log('API Key length:', apiKey?.length);
   
   if (!apiKey) {
-    const error = 'Imgbb API key is not configured in .env.local';
+    const error = 'Imgbb API key is not configured';
     console.error('❌', error);
     throw new Error(error);
   }
@@ -19,7 +25,7 @@ export const uploadToImgbb = async (file: File): Promise<string> => {
   formData.append('image', file);
 
   const uploadUrl = `https://api.imgbb.com/1/upload?key=${apiKey}`;
-  console.log('📤 Uploading to:', uploadUrl);
+  console.log('📤 Uploading to Imgbb...');
 
   try {
     const response = await fetch(uploadUrl, {
