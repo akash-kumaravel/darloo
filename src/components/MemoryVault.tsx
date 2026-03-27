@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Camera, Heart, Maximize2, X, Plus, Image as ImageIcon, Send, Loader2 } from 'lucide-react';
 import { collection, query, onSnapshot, orderBy, addDoc } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { db, storage, auth } from '../firebase';
+import { db, auth } from '../firebase';
 import { Memory } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-error';
+import { uploadToImgbb } from '../lib/imgbb-upload';
 import { toast } from 'sonner';
 
 export default function MemoryVault() {
@@ -33,29 +33,27 @@ export default function MemoryVault() {
   }, []);
 
   const handleUpload = async () => {
+    console.log('📸 Memory upload started');
+    
     if (!image || !caption) {
       toast.error('Please select an image and add a caption');
       return;
     }
 
-    if (image.size > 5 * 1024 * 1024) {
-      toast.error('Image is too large (max 5MB)');
+    if (image.size > 10 * 1024 * 1024) {
+      toast.error('Image is too large (max 10MB)');
       return;
     }
 
     setIsUploading(true);
+    console.log('🚀 Calling uploadToImgbb...');
+    
     try {
-      const storageRef = ref(storage, `memories/${Date.now()}_${image.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, image);
-
-      await new Promise((resolve, reject) => {
-        uploadTask.on('state_changed', null, reject, () => resolve(null));
-      });
-
-      const url = await getDownloadURL(storageRef);
+      const imageUrl = await uploadToImgbb(image);
+      console.log('✅ Got URL from Imgbb:', imageUrl);
 
       await addDoc(collection(db, 'memories'), {
-        image: url,
+        image: imageUrl,
         caption: caption,
         createdAt: new Date().toISOString(),
         userId: auth.currentUser?.uid
@@ -66,8 +64,8 @@ export default function MemoryVault() {
       setImage(null);
       setShowUpload(false);
     } catch (error) {
-      console.error('Memory upload error:', error);
-      toast.error('Failed to upload memory. Check CORS settings.');
+      console.error('❌ Memory upload error:', error);
+      toast.error(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}. Check console.`);
       handleFirestoreError(error, OperationType.CREATE, 'memories');
     } finally {
       setIsUploading(false);
