@@ -17,8 +17,8 @@ export default function Navigation({ activeTab, setActiveTab }: NavigationProps)
   ];
 
   return (
-    <div className="fixed bottom-6 left-6 right-6 z-50">
-      <div className="glass rounded-3xl p-2 flex items-center justify-around shadow-2xl">
+    <div className="fixed bottom-0 left-0 right-0 md:bottom-6 md:left-6 md:right-6 z-50">
+      <div className="glass rounded-t-3xl md:rounded-3xl p-2 md:p-3 flex items-center justify-around shadow-2xl">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -27,7 +27,7 @@ export default function Navigation({ activeTab, setActiveTab }: NavigationProps)
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className="relative py-3 px-6 transition-all"
+              className="relative py-3 px-3 md:px-6 transition-all flex-1 md:flex-none"
             >
               {isActive && (
                 <motion.div
@@ -38,11 +38,11 @@ export default function Navigation({ activeTab, setActiveTab }: NavigationProps)
               )}
               <div className="relative flex flex-col items-center gap-1">
                 <Icon className={cn(
-                  "w-6 h-6 transition-colors duration-300",
+                  "w-5 h-5 md:w-6 md:h-6 transition-colors duration-300",
                   isActive ? "text-primary" : "text-slate-400"
                 )} />
                 <span className={cn(
-                  "text-[10px] font-bold uppercase tracking-widest transition-colors duration-300",
+                  "text-[9px] md:text-[10px] font-bold uppercase tracking-widest transition-colors duration-300",
                   isActive ? "text-primary" : "text-slate-400"
                 )}>
                   {tab.label}

@@ -314,7 +314,7 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen cinematic-gradient pb-24 overflow-x-hidden">
+    <div className="min-h-screen cinematic-gradient pb-40 md:pb-24 overflow-x-hidden">
       <AnimatePresence mode="wait">
           {activeTab === 'home' && (
             <motion.div
