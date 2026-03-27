@@ -1,19 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  onAuthStateChanged, 
-  User as FirebaseUser 
-} from 'firebase/auth';
-import { 
-  doc, 
-  getDoc, 
-  setDoc as firebaseSetDoc, 
-  onSnapshot, 
-  collection, 
-  query, 
-  orderBy, 
-  limit 
-} from 'firebase/firestore';
-import { auth, db } from './firebase';
 import { UserProfile, GameStats, Role } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -29,7 +14,6 @@ import {
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { cn } from './lib/utils';
-import { handleFirestoreError, OperationType } from './lib/firestore-error';
 
 // Components
 import AdminPanel from './components/AdminPanel';
@@ -42,9 +26,12 @@ import Splash from './components/Splash';
 import { MoodProvider } from './context/MoodContext';
 
 export default function App() {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [stats, setStats] = useState<GameStats | null>(null);
+  const [stats, setStats] = useState<GameStats>(() => {
+    const saved = localStorage.getItem('loveverse_stats');
+    return saved ? JSON.parse(saved) : { totalStars: 0, level: 1, xp: 0 };
+  });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('home');
   const [isAdminMode, setIsAdminMode] = useState(false);
@@ -54,139 +41,29 @@ export default function App() {
   const [adminUser, setAdminUser] = useState('');
   const [adminPass, setAdminPass] = useState('');
   const [userPass, setUserPass] = useState('');
-  const [localAuth, setLocalAuth] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowSplash(false), 2500);
     return () => clearTimeout(timer);
   }, []);
 
-  // Check localStorage for existing local auth  
+  // Check localStorage for existing auth
   useEffect(() => {
     const savedAuth = localStorage.getItem('loveverse_auth');
     const savedRole = localStorage.getItem('loveverse_role');
-    if (savedAuth === 'true') {
-      setLocalAuth(true);
-      const loadUserProfile = async () => {
-        try {
-          const userUID = savedRole === 'admin' ? 'admin_user_akash' : 'user_libii';
-          const userDoc = await getDoc(doc(db, 'users', userUID));
-          if (userDoc.exists()) {
-            const userData = userDoc.data() as UserProfile;
-            setProfile(userData);
-            setIsAdminMode(savedRole === 'admin');
-            
-            const mockUser = {
-              uid: userUID,
-              email: userData.email,
-              displayName: userData.name,
-              photoURL: userData.photo,
-              emailVerified: false,
-              isAnonymous: false,
-              metadata: {},
-              providerData: [],
-              phoneNumber: null,
-              tenantId: null,
-              delete: async () => {},
-              getIdToken: async () => '',
-              getIdTokenResult: async () => ({ token: '', expirationTime: '', authTime: '', issuedAtTime: '', signInProvider: null, signInSecondFactor: null, claims: {} }),
-              reload: async () => {},
-              toJSON: () => ({}),
-            } as any;
-            setUser(mockUser);
-          }
-        } catch (error) {
-          console.error('Error loading user profile:', error);
-        }
-      };
-      loadUserProfile();
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    if (!localAuth) return;
-
-   const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-      if (firebaseUser) {
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (userDoc.exists()) {
-          setProfile(userDoc.data() as UserProfile);
-        } else {
-          try {
-            const newProfile: UserProfile = {
-              uid: firebaseUser.uid,
-              name: firebaseUser.displayName || 'Libii',
-              email: firebaseUser.email || 'libii@loveverse.com',
-              role: 'user',
-              photo: firebaseUser.photoURL || '',
-            };
-            await firebaseSetDoc(doc(db, 'users', firebaseUser.uid), newProfile);
-            setProfile(newProfile);
-          } catch (error) {
-            handleFirestoreError(error, OperationType.WRITE, `users/${firebaseUser.uid}`);
-          }
-        }
-      } else {
-        setProfile(null);
-      }
-    });
-
-    return () => unsubscribe();
-  }, [localAuth]);
-
-  useEffect(() => {
-    if (!localAuth) return;
-
-    const initializeStats = async () => {
+    const savedProfile = localStorage.getItem('loveverse_profile');
+    
+    if (savedAuth === 'true' && savedProfile) {
       try {
-        await firebaseSetDoc(doc(db, 'stats', 'global'), {
-          totalStars: 0,
-          level: 1,
-          xp: 0
-        });
-      } catch (e) {
-        handleFirestoreError(e, OperationType.WRITE, 'stats/global');
-      }
-    };
-
-    const statsUnsubscribe = onSnapshot(doc(db, 'stats', 'global'), (doc) => {
-      if (doc.exists()) {
-        setStats(doc.data() as GameStats);
-      } else {
-        initializeStats();
-      }
-    });
-
-    return () => statsUnsubscribe();
-  }, [localAuth]);
-
-  const handleAdminLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminUser === 'Admin' && adminPass === 'Akash@0901') {
-      localStorage.setItem('loveverse_auth', 'true');
-      localStorage.setItem('loveverse_role', 'admin');
-      setLocalAuth(true);
-      setIsAdminMode(true);
-      
-      const adminUID = 'admin_user_akash';
-      try {
-        const adminProfile: UserProfile = {
-          uid: adminUID,
-          name: 'Admin',
-          email: 'admin@loveverse.com',
-          role: 'admin',
-          photo: '',
-        };
-        
-        await firebaseSetDoc(doc(db, 'users', adminUID), adminProfile);
+        const userData = JSON.parse(savedProfile) as UserProfile;
+        setProfile(userData);
+        setIsAdminMode(savedRole === 'admin');
         
         const mockUser = {
-          uid: adminUID,
-          email: 'admin@loveverse.com',
-          displayName: 'Admin',
-          photoURL: '',
+          uid: userData.uid,
+          email: userData.email,
+          displayName: userData.name,
+          photoURL: userData.photo,
           emailVerified: false,
           isAnonymous: false,
           metadata: {},
@@ -199,69 +76,101 @@ export default function App() {
           reload: async () => {},
           toJSON: () => ({}),
         } as any;
-        
         setUser(mockUser);
-        setProfile(adminProfile);
-        setAdminUser('');
-        setAdminPass('');
-        setShowAdminLogin(false);
-        toast.success('Welcome Admin! 👑');
       } catch (error) {
-        console.error('Admin login error:', error);
-        toast.error('Failed to set up admin profile');
+        console.error('Error loading user profile:', error);
+        localStorage.removeItem('loveverse_auth');
+        localStorage.removeItem('loveverse_role');
+        localStorage.removeItem('loveverse_profile');
       }
+    }
+    setLoading(false);
+  }, []);
+
+  const handleAdminLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminUser === 'Admin' && adminPass === 'Akash@0901') {
+      const adminProfile: UserProfile = {
+        uid: 'admin_user_akash',
+        name: 'Admin',
+        email: 'admin@loveverse.com',
+        role: 'admin',
+        photo: '',
+      };
+      
+      localStorage.setItem('loveverse_auth', 'true');
+      localStorage.setItem('loveverse_role', 'admin');
+      localStorage.setItem('loveverse_profile', JSON.stringify(adminProfile));
+      
+      const mockUser = {
+        uid: 'admin_user_akash',
+        email: 'admin@loveverse.com',
+        displayName: 'Admin',
+        photoURL: '',
+        emailVerified: false,
+        isAnonymous: false,
+        metadata: {},
+        providerData: [],
+        phoneNumber: null,
+        tenantId: null,
+        delete: async () => {},
+        getIdToken: async () => '',
+        getIdTokenResult: async () => ({ token: '', expirationTime: '', authTime: '', issuedAtTime: '', signInProvider: null, signInSecondFactor: null, claims: {} }),
+        reload: async () => {},
+        toJSON: () => ({}),
+      } as any;
+      
+      setUser(mockUser);
+      setProfile(adminProfile);
+      setIsAdminMode(true);
+      setAdminUser('');
+      setAdminPass('');
+      setShowAdminLogin(false);
+      toast.success('Welcome Admin! 👑');
     } else {
       toast.error('Invalid Admin Credentials');
     }
   };
 
-  const handleUserLogin = async (e: React.FormEvent) => {
+  const handleUserLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (userPass === 'Libii@1109') {
+      const userProfile: UserProfile = {
+        uid: 'user_libii',
+        name: 'Libii',
+        email: 'libii@loveverse.com',
+        role: 'user',
+        photo: '',
+      };
+      
       localStorage.setItem('loveverse_auth', 'true');
       localStorage.setItem('loveverse_role', 'user');
-      setLocalAuth(true);
-      setIsAdminMode(false);
+      localStorage.setItem('loveverse_profile', JSON.stringify(userProfile));
       
-      const userUID = 'user_libii';
-      try {
-        const userProfile: UserProfile = {
-          uid: userUID,
-          name: 'Libii',
-          email: 'libii@loveverse.com',
-          role: 'user',
-          photo: '',
-        };
-        
-        await firebaseSetDoc(doc(db, 'users', userUID), userProfile);
-        
-        const mockUser = {
-          uid: userUID,
-          email: 'libii@loveverse.com',
-          displayName: 'Libii',
-          photoURL: '',
-          emailVerified: false,
-          isAnonymous: false,
-          metadata: {},
-          providerData: [],
-          phoneNumber: null,
-          tenantId: null,
-          delete: async () => {},
-          getIdToken: async () => '',
-          getIdTokenResult: async () => ({ token: '', expirationTime: '', authTime: '', issuedAtTime: '', signInProvider: null, signInSecondFactor: null, claims: {} }),
-          reload: async () => {},
-          toJSON: () => ({}),
-        } as any;
-        
-        setUser(mockUser);
-        setProfile(userProfile);
-        setUserPass('');
-        setShowUserLogin(false);
-        toast.success('Welcome Libii! 💖');
-      } catch (error) {
-        console.error('User login error:', error);
-        toast.error('Failed to set up user profile');
-      }
+      const mockUser = {
+        uid: 'user_libii',
+        email: 'libii@loveverse.com',
+        displayName: 'Libii',
+        photoURL: '',
+        emailVerified: false,
+        isAnonymous: false,
+        metadata: {},
+        providerData: [],
+        phoneNumber: null,
+        tenantId: null,
+        delete: async () => {},
+        getIdToken: async () => '',
+        getIdTokenResult: async () => ({ token: '', expirationTime: '', authTime: '', issuedAtTime: '', signInProvider: null, signInSecondFactor: null, claims: {} }),
+        reload: async () => {},
+        toJSON: () => ({}),
+      } as any;
+      
+      setUser(mockUser);
+      setProfile(userProfile);
+      setIsAdminMode(false);
+      setUserPass('');
+      setShowUserLogin(false);
+      toast.success('Welcome Libii! 💖');
     } else {
       toast.error('Invalid Password');
     }
@@ -270,7 +179,7 @@ export default function App() {
   const handleLogout = () => {
     localStorage.removeItem('loveverse_auth');
     localStorage.removeItem('loveverse_role');
-    setLocalAuth(false);
+    localStorage.removeItem('loveverse_profile');
     setUser(null);
     setProfile(null);
     setIsAdminMode(false);
@@ -282,7 +191,7 @@ export default function App() {
   if (showSplash) return <Splash />;
   if (loading) return <div className="h-screen w-screen flex items-center justify-center cinematic-gradient"><Heart className="text-primary animate-pulse w-12 h-12" /></div>;
 
-  if (!localAuth) {
+  if (!isLoggedIn) {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center cinematic-gradient p-6 text-center">
         <motion.div 

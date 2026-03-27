@@ -58,36 +58,9 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
     { label: '', emoji: '🏡', response: '', reward: 5 },
   ]);
 
-  useEffect(() => {
-    const moodQuery = query(collection(db, 'moods'), orderBy('updatedAt', 'desc'));
-    const unsubscribeMoods = onSnapshot(moodQuery, (snap) => {
-      const moods = snap.docs.map(doc => {
-        const data = doc.data() as UserMood;
-        return {
-          ...data,
-          id: doc.id
-        };
-      });
-      console.log('Moods updated:', moods); // Debug log
-      setUserMoods(moods);
-    }, (error) => {
-      console.error('Moods snapshot error:', error);
-      handleFirestoreError(error, OperationType.GET, 'moods');
-    });
+  // Note: Firestore listeners disabled - app now uses localStorage for local auth
+  // useEffect(() => { ... } was here but removed to prevent Firebase auth errors
 
-    const unsubscribeResponses = onSnapshot(
-      query(collection(db, 'choiceResponses'), orderBy('createdAt', 'desc'), limit(10)),
-      (snap) => {
-        const responses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChoiceResponse));
-        setChoiceResponses(responses);
-      }
-    );
-
-    return () => {
-      unsubscribeMoods();
-      unsubscribeResponses();
-    };
-  }, []);
   const [giftOptions, setGiftOptions] = useState([
     { title: '', message: '', image: null as File | null },
     { title: '', message: '', image: null as File | null },
@@ -97,29 +70,30 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   const updateDailyMessage = async () => {
     if (!dailyMsg) return;
     try {
-      await setDoc(doc(db, 'messages', 'daily'), {
-        dailyMessage: dailyMsg,
-        updatedAt: new Date().toISOString()
-      });
+      // Store in localStorage instead of Firestore
+      localStorage.setItem('loveverse_daily_message', dailyMsg);
       toast.success('Daily message updated! 💌');
       setDailyMsg('');
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'messages/daily');
+      console.error('Error updating daily message:', error);
+      toast.error('Failed to update message');
     }
   };
 
   const updateNextEvent = async () => {
     if (!eventName || !eventDate) return;
     try {
-      await setDoc(doc(db, 'events', 'next'), {
+      // Store in localStorage instead of Firestore
+      localStorage.setItem('loveverse_next_event', JSON.stringify({
         nextEvent: eventName,
         countdown: new Date(eventDate).toISOString()
-      });
+      }));
       toast.success('Event scheduled! 📅');
       setEventName('');
       setEventDate('');
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'events/next');
+      console.error('Error updating event:', error);
+      toast.error('Failed to schedule event');
     }
   };
 
@@ -136,52 +110,24 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
     }
 
     setIsUploading(true);
-    console.log('Starting memory upload...', memoryImage.name);
     try {
-      const sanitizedName = sanitizeFileName(memoryImage.name);
-      const storageRef = ref(storage, `memories/${Date.now()}_${sanitizedName}`);
-      console.log('Storage ref created:', storageRef.fullPath);
-      
-      const uploadTask = uploadBytesResumable(storageRef, memoryImage);
-
-      await new Promise((resolve, reject) => {
-        uploadTask.on('state_changed', 
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            console.log('Upload is ' + progress + '% done');
-          }, 
-          (error) => {
-            console.error('Upload task failed:', error);
-            reject(error);
-          }, 
-          () => {
-            console.log('Upload task completed successfully');
-            resolve(null);
-          }
-        );
-      });
-      
-      const url = await getDownloadURL(storageRef);
-      console.log('Download URL obtained:', url);
-
-      await addDoc(collection(db, 'memories'), {
-        weeklyMemory: memoryCaption,
-        image: url,
+      // Store memory locally in localStorage (no Firebase Storage)
+      const memories = JSON.parse(localStorage.getItem('loveverse_memories') || '[]');
+      memories.push({
         caption: memoryCaption,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        id: Date.now()
       });
+      localStorage.setItem('loveverse_memories', JSON.stringify(memories));
 
-      toast.success('Memory uploaded! 📸');
+      toast.success('Memory saved locally! 📸');
       setMemoryCaption('');
       setMemoryImage(null);
     } catch (error) {
-      console.error('Upload error details:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Upload failed';
-      toast.error(errorMsg.includes('permission') ? 'Permission denied. Make sure you are logged in.' : `Upload failed: ${errorMsg}`);
-      handleFirestoreError(error, OperationType.CREATE, 'memories');
+      console.error('Memory save error:', error);
+      toast.error('Failed to save memory');
     } finally {
       setIsUploading(false);
-      console.log('Upload process finished.');
     }
   };
 
@@ -198,50 +144,25 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
     }
 
     setIsUploading(true);
-    console.log('Starting gift set creation...');
     try {
-      const uploadedOptions = await Promise.all(giftOptions.map(async (opt, i) => {
-        let url = `https://picsum.photos/seed/gift${i}/400/400`;
-        if (opt.image) {
-          console.log(`Uploading gift image ${i + 1}:`, opt.image.name);
-          const sanitizedName = sanitizeFileName(opt.image.name);
-          const storageRef = ref(storage, `gifts/${Date.now()}_${sanitizedName}`);
-          
-          const uploadTask = uploadBytesResumable(storageRef, opt.image);
-
-          await new Promise((resolve, reject) => {
-            uploadTask.on('state_changed', 
-              (snapshot) => {
-                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                console.log(`Gift ${i + 1} upload is ${progress}% done`);
-              }, 
-              (error) => {
-                console.error(`Gift ${i + 1} upload failed:`, error);
-                reject(error);
-              }, 
-              () => {
-                console.log(`Gift ${i + 1} upload completed`);
-                resolve(null);
-              }
-            );
-          });
-
-          url = await getDownloadURL(storageRef);
-          console.log(`Gift image ${i + 1} URL:`, url);
-        }
-        return { title: opt.title || `Gift ${i + 1}`, message: opt.message || 'A special surprise!', image: url };
+      // Create gift set with placeholder URLs (no Firebase Storage)
+      const uploadedOptions = giftOptions.map((opt, i) => ({
+        title: opt.title || `Gift ${i + 1}`,
+        message: opt.message || 'A special surprise!',
+        image: `https://picsum.photos/seed/gift${Date.now()}_${i}/400/400`
       }));
 
-      console.log('Final uploaded options:', uploadedOptions);
-      console.log('All gift images processed. Saving to Firestore...');
-      const docRef = await addDoc(collection(db, 'giftSets'), {
+      // Store in localStorage
+      const giftSets = JSON.parse(localStorage.getItem('loveverse_giftsets') || '[]');
+      giftSets.push({
+        id: Date.now(),
         option1: uploadedOptions[0],
         option2: uploadedOptions[1],
         option3: uploadedOptions[2],
         unlocked: false,
         createdAt: new Date().toISOString()
       });
-      console.log('Gift set created with ID:', docRef.id);
+      localStorage.setItem('loveverse_giftsets', JSON.stringify(giftSets));
 
       toast.success('Gift set created! 🎁');
       setShowGiftForm(false);
@@ -252,11 +173,9 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
       ]);
     } catch (error) {
       console.error('Gift set creation error:', error);
-      toast.error('Gift set creation failed. Check console.');
-      handleFirestoreError(error, OperationType.CREATE, 'giftSets');
+      toast.error('Gift set creation failed');
     } finally {
       setIsUploading(false);
-      console.log('Gift set creation process finished.');
     }
   };
 
@@ -267,23 +186,20 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
     }
 
     try {
-      // Deactivate other moments first
-      const q = query(collection(db, 'choiceMoments'));
-      const activeMoments = await getDocs(q);
-      await Promise.all(activeMoments.docs.map(d => updateDoc(d.ref, { active: false })));
-
-      await addDoc(collection(db, 'choiceMoments'), {
+      // Store in localStorage
+      localStorage.setItem('loveverse_choice_moment', JSON.stringify({
         question: choiceQuestion,
         options: choiceOptions,
         active: true,
         createdAt: new Date().toISOString()
-      });
+      }));
 
       toast.success('Choice Moment activated! ✨');
       setShowChoiceForm(false);
       setChoiceQuestion('');
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'choiceMoments');
+      console.error('Error creating choice moment:', error);
+      toast.error('Failed to create choice moment');
     }
   };
 
