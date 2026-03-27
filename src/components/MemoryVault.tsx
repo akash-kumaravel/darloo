@@ -73,10 +73,6 @@ export default function MemoryVault() {
   };
 
   const deleteMemory = async (memoryId: string) => {
-    if (!confirm('Delete this memory? This cannot be undone.')) {
-      return;
-    }
-
     try {
       await deleteDoc(doc(db, 'memories', memoryId));
       setSelectedMemory(null);

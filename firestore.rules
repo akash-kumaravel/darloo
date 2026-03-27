@@ -134,8 +134,9 @@ service cloud.firestore {
     // Memories
     match /memories/{id} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update, delete: if isAdmin();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin() || isOwner(resource.data.userId);
+      allow delete: if isAdmin() || isOwner(resource.data.userId);
     }
 
     // Moods

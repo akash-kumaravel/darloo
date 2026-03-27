@@ -325,10 +325,6 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   };
 
   const resetAllStats = async () => {
-    if (!confirm('⚠️ This will reset ALL stars and gifts to 0! Are you sure?')) {
-      return;
-    }
-
     try {
       const statsRef = doc(db, 'stats', 'global');
       await updateDoc(statsRef, {
@@ -343,10 +339,6 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   };
 
   const deleteChoiceResponse = async (response: ChoiceResponse) => {
-    if (!confirm(`Delete "${response.choiceLabel}" response from ${response.userName}? This cannot be undone.`)) {
-      return;
-    }
-
     try {
       await deleteDoc(doc(db, 'choiceResponses', response.id));
       // Remove from local rewarded set
