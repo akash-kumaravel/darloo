@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { collection, query, where, onSnapshot, doc, updateDoc, increment, addDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, addDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { ChoiceMoment, ChoiceOption } from '../types';
-import { Sparkles, CheckCircle2, XCircle } from 'lucide-react';
+import { Sparkles, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { handleFirestoreError, OperationType } from '../lib/firestore-error';
 
@@ -27,6 +27,7 @@ export default function ChoiceMoments() {
 
   const handleChoice = async (option: ChoiceOption) => {
     setSelectedOption(option);
+    setShowResponse(true);
 
     const user = auth.currentUser;
     if (user && activeMoment) {
@@ -40,21 +41,10 @@ export default function ChoiceMoments() {
           choiceEmoji: option.emoji,
           createdAt: new Date().toISOString()
         });
+        toast.success(`Your choice has been recorded!`);
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, 'choiceResponses');
       }
-    }
-
-    // Award 1 star for making a choice
-    const statsRef = doc(db, 'stats', 'global');
-    try {
-      await updateDoc(statsRef, {
-        totalStars: increment(1),
-        xp: increment(10)
-      });
-      toast.success(`+1 Star! ✨`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'stats/global');
     }
 
     // Deactivate the moment after a choice is made (optional, maybe it's a one-time thing)
@@ -109,23 +99,23 @@ export default function ChoiceMoments() {
             key="response"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="space-y-4 text-center py-4"
+            className="space-y-4 text-center py-6"
           >
             <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
               <CheckCircle2 className="w-8 h-8 text-primary" />
             </div>
             <h4 className="text-2xl font-black tracking-tighter text-slate-800 uppercase">
-              Great Choice!
+              Choice Locked!
             </h4>
-            <p className="text-slate-600 font-medium italic">
-              "{selectedOption?.response}"
+            <div className="flex items-center justify-center gap-3 bg-white/50 p-3 rounded-2xl">
+              <span className="text-2xl">{selectedOption?.emoji}</span>
+              <span className="text-sm font-bold text-primary uppercase tracking-widest">
+                {selectedOption?.label}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">
+              Waiting for admin to reward...
             </p>
-            <button 
-              onClick={() => setShowResponse(false)}
-              className="mt-4 text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-primary transition-colors"
-            >
-              Close Moment
-            </button>
           </motion.div>
         )}
       </AnimatePresence>
