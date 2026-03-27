@@ -401,6 +401,9 @@ def reset_stars():
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/', methods=['GET'])
+def index():
     """Welcome endpoint"""
     return jsonify({
         'name': 'LOVEVERSE Server',
@@ -409,7 +412,11 @@ def reset_stars():
             '/health',
             '/upload-image',
             '/api/generate',
-            '/api/image-to-text'
+            '/api/image-to-text',
+            '/api/stars',
+            '/api/stars/add',
+            '/api/stars/set',
+            '/api/stars/reset'
         ]
     }), 200
 

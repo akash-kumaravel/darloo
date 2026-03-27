@@ -1,11 +1,23 @@
 import { cn } from '../lib/utils';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Lock, Gift, Sparkles, ChevronRight, Heart, Image as ImageIcon, Plus, X, Loader2 } from 'lucide-react';
+import { Lock, Gift, Sparkles, ChevronRight, Heart } from 'lucide-react';
+import { 
+  collection, 
+  query, 
+  where, 
+  onSnapshot, 
+  doc, 
+  updateDoc, 
+  addDoc,
+  orderBy,
+  limit
+} from 'firebase/firestore';
+import { db, auth } from '../firebase';
 import { GiftSet, GiftOption } from '../types';
 import { toast } from 'sonner';
 import confetti from 'canvas-confetti';
-import { uploadImage, fileToBase64 } from '../services/api';
+import { handleFirestoreError, OperationType } from '../lib/firestore-error';
 
 interface GiftSystemProps {
   totalStars: number;
@@ -14,7 +26,6 @@ interface GiftSystemProps {
 }
 
 type RevealPhase = 'idle' | 'flipping' | 'won' | 'revealing' | 'revealOthers' | 'complete';
-type GiftCreationPhase = 'idle' | 'uploading' | 'complete';
 
 // Typewriter Component
 const Typewriter = ({ text, speed = 50, onComplete }: { text: string; speed?: number; onComplete?: () => void }) => {
@@ -41,32 +52,33 @@ export default function GiftSystem({ totalStars, giftOpenRequest = false, onGift
   const [showUnlock, setShowUnlock] = useState(false);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [revealPhase, setRevealPhase] = useState<RevealPhase>('idle');
-  const [showCreateGift, setShowCreateGift] = useState(false);
-  const [giftTitle, setGiftTitle] = useState('');
-  const [giftMessage, setGiftMessage] = useState('');
-  const [giftImage, setGiftImage] = useState<File | null>(null);
-  const [creationPhase, setCreationPhase] = useState<GiftCreationPhase>('idle');
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isLocked, setIsLocked] = useState(false);
 
   // Calculate if gift is ready (every 25 stars: 25, 50, 75, etc.)
   const starsInCycle = totalStars % 25;
   const isGiftReady = starsInCycle === 0 && totalStars > 0;
 
-  // Load gifts from localStorage instead of Firebase
   useEffect(() => {
-    const savedGifts = localStorage.getItem('loveverse_gifts');
-    if (savedGifts) {
-      try {
-        const gifts = JSON.parse(savedGifts) as GiftSet[];
-        // Get first unlocked gift
-        const nextGift = gifts.find(g => !g.unlocked);
-        setActiveGiftSet(nextGift || null);
-      } catch (error) {
-        console.error('Error loading gifts:', error);
+    const q = query(
+      collection(db, 'giftSets'), 
+      where('unlocked', '==', false),
+      orderBy('createdAt', 'desc'),
+      limit(1)
+    );
+
+    const unsubscribe = onSnapshot(q, (snap) => {
+      if (!snap.empty) {
+        const data = { id: snap.docs[0].id, ...snap.docs[0].data() } as GiftSet;
+        setActiveGiftSet(data);
+      } else {
         setActiveGiftSet(null);
       }
-    }
+    }, (error) => {
+      console.error('Gift sets snapshot error:', error);
+      handleFirestoreError(error, OperationType.GET, 'giftSets');
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const isUnlockable = isGiftReady && activeGiftSet;
@@ -132,33 +144,22 @@ export default function GiftSystem({ totalStars, giftOpenRequest = false, onGift
     }, 5500);
 
     try {
-      // Save to scrapbook collection in localStorage
-      const savedScrapbook = localStorage.getItem('loveverse_scrapbook');
-      const scrapbook = savedScrapbook ? JSON.parse(savedScrapbook) : [];
-      
-      scrapbook.push({
-        id: Date.now().toString(),
+      // Add to collection
+      const path = 'collection';
+      await addDoc(collection(db, path), {
+        userId: auth.currentUser?.uid,
         title: option.title,
         message: option.message,
         image: option.image,
         date: new Date().toISOString()
       });
-      
-      localStorage.setItem('loveverse_scrapbook', JSON.stringify(scrapbook));
 
       // Mark gift set as unlocked
-      const savedGifts = localStorage.getItem('loveverse_gifts');
-      if (savedGifts) {
-        const gifts = JSON.parse(savedGifts) as GiftSet[];
-        const updatedGifts = gifts.map(g => 
-          g.id === activeGiftSet.id ? { ...g, unlocked: true } : g
-        );
-        localStorage.setItem('loveverse_gifts', JSON.stringify(updatedGifts));
-      }
-      
-      toast.success('Gift added to scrapbook! 📸');
+      await updateDoc(doc(db, 'giftSets', activeGiftSet.id), {
+        unlocked: true
+      });
     } catch (error) {
-      console.error('Error saving gift:', error);
+      handleFirestoreError(error, OperationType.WRITE, 'giftSets/collection');
       toast.error('Failed to save gift to scrapbook');
       setIsLocked(false);
     }
@@ -170,72 +171,6 @@ export default function GiftSystem({ totalStars, giftOpenRequest = false, onGift
     setRevealPhase('idle');
     setIsLocked(false);
     onGiftOpened?.();
-  };
-
-  const handleCreateGift = async () => {
-    if (!giftTitle || !giftMessage || !giftImage) {
-      toast.error('Please fill all fields and select an image');
-      return;
-    }
-
-    setCreationPhase('uploading');
-    try {
-      // Convert file to base64
-      const base64 = await fileToBase64(giftImage);
-      
-      // Upload image to GitHub
-      const uploadResponse = await uploadImage(base64, `gift_${Date.now()}_${giftImage.name}`);
-      
-      if (!uploadResponse.success) {
-        toast.error('Failed to upload gift image to server');
-        setCreationPhase('idle');
-        return;
-      }
-
-      // Create gift set in localStorage
-      const savedGifts = localStorage.getItem('loveverse_gifts');
-      const gifts: GiftSet[] = savedGifts ? JSON.parse(savedGifts) : [];
-      
-      const newGift: GiftSet = {
-        id: Date.now().toString(),
-        option1: {
-          title: giftTitle,
-          message: giftMessage,
-          image: uploadResponse.url
-        },
-        option2: {
-          title: 'Mystery Gift 2',
-          message: 'Another surprise awaits...',
-          image: uploadResponse.url
-        },
-        option3: {
-          title: 'Mystery Gift 3',
-          message: 'The final treasure...',
-          image: uploadResponse.url
-        },
-        unlocked: false,
-        createdAt: new Date().toISOString()
-      };
-      
-      gifts.push(newGift);
-      localStorage.setItem('loveverse_gifts', JSON.stringify(gifts));
-
-      toast.success('Gift created! 🎁 (Image stored permanently on GitHub)');
-      setCreationPhase('complete');
-      
-      // Reset form
-      setTimeout(() => {
-        setShowCreateGift(false);
-        setGiftTitle('');
-        setGiftMessage('');
-        setGiftImage(null);
-        setCreationPhase('idle');
-      }, 1500);
-    } catch (error) {
-      console.error('Gift creation error:', error);
-      toast.error('Failed to create gift');
-      setCreationPhase('idle');
-    }
   };
 
   if (!activeGiftSet && !isGiftReady) return null;
@@ -610,109 +545,6 @@ export default function GiftSystem({ totalStars, giftOpenRequest = false, onGift
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Create Gift Modal */}
-      <AnimatePresence>
-        {showCreateGift && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-black/95 backdrop-blur-xl flex items-center justify-center p-6"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="bg-gradient-to-br from-primary/10 to-secondary/10 rounded-3xl p-8 max-w-md w-full space-y-4 border border-primary/20"
-            >
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="font-black text-slate-800 text-xl">Create a Gift 🎁</h3>
-                <button 
-                  onClick={() => {
-                    setShowCreateGift(false);
-                    setGiftTitle('');
-                    setGiftMessage('');
-                    setGiftImage(null);
-                  }}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <input
-                type="text"
-                placeholder="Gift title"
-                value={giftTitle}
-                onChange={(e) => setGiftTitle(e.target.value)}
-                className="w-full bg-white/50 border-none rounded-xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm"
-              />
-
-              <textarea
-                placeholder="Write a message for your gift..."
-                value={giftMessage}
-                onChange={(e) => setGiftMessage(e.target.value)}
-                className="w-full h-20 bg-white/50 border-none rounded-xl px-4 py-3 focus:ring-2 ring-primary outline-none text-sm resize-none"
-              />
-
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="relative aspect-video bg-slate-100 rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-slate-200 transition-colors overflow-hidden"
-              >
-                {giftImage ? (
-                  <img
-                    src={URL.createObjectURL(giftImage)}
-                    className="w-full h-full object-cover"
-                    alt="Preview"
-                  />
-                ) : (
-                  <>
-                    <ImageIcon className="w-8 h-8 text-slate-300" />
-                    <span className="text-xs text-slate-400 font-medium">Tap to select image</span>
-                  </>
-                )}
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  accept="image/*"
-                  onChange={(e) => setGiftImage(e.target.files?.[0] || null)}
-                />
-              </div>
-
-              <button
-                onClick={handleCreateGift}
-                disabled={creationPhase === 'uploading' || creationPhase === 'complete'}
-                className="w-full bg-gradient-to-r from-primary to-secondary text-white py-3 rounded-xl font-bold shadow-lg shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {creationPhase === 'uploading' ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Uploading to GitHub...
-                  </>
-                ) : creationPhase === 'complete' ? (
-                  <>
-                    <span>✓ Gift Created!</span>
-                  </>
-                ) : (
-                  'Create Gift'
-                )}
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Floating Create Gift Button */}
-      <motion.button
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.95 }}
-        onClick={() => setShowCreateGift(true)}
-        className="fixed bottom-24 right-6 z-40 w-14 h-14 rounded-full bg-gradient-to-br from-primary to-secondary text-white shadow-lg shadow-primary/40 flex items-center justify-center hover:shadow-primary/60 transition-shadow"
-      >
-        <Plus className="w-6 h-6" />
-      </motion.button>
     </div>
   );
 }

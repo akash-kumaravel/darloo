@@ -1,20 +1,21 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Star, Heart, Gift } from 'lucide-react';
+import { doc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
+import { db } from '../firebase';
 import { toast } from 'sonner';
 import confetti from 'canvas-confetti';
 import { cn } from '../lib/utils';
-import { addStars, getStars } from '../services/api';
+import { handleFirestoreError, OperationType } from '../lib/firestore-error';
 
 interface StarReactorProps {
   totalStars: number;
   isAdmin: boolean;
   cooldown?: number;
-  onStarAdded?: (newTotal: number) => void;
   onGiftOpen?: () => void;
 }
 
-export default function StarReactor({ totalStars, isAdmin, cooldown = 500, onStarAdded, onGiftOpen }: StarReactorProps) {
+export default function StarReactor({ totalStars, isAdmin, cooldown = 500, onGiftOpen }: StarReactorProps) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [lastClick, setLastClick] = useState(0);
   const [floatingHearts, setFloatingHearts] = useState<{ id: number; x: number; y: number }[]>([]);
@@ -72,26 +73,13 @@ export default function StarReactor({ totalStars, isAdmin, cooldown = 500, onSta
     setFloatingHearts(prev => [...prev, ...newHearts]);
 
     try {
-      // Send star to server
-      const response = await addStars(1, 'Admin reward');
-      
-      if (!response.success) {
-        toast.error('Failed to give star');
-        setIsAnimating(false);
-        return;
-      }
-
-      // Update localStorage stats
-      const stats = JSON.parse(localStorage.getItem('loveverse_stats') || '{"totalStars": 0, "level": 1, "xp": 0}');
-      stats.totalStars = response.total;
-      stats.lastStarGivenAt = new Date().toISOString();
-      localStorage.setItem('loveverse_stats', JSON.stringify(stats));
-      
-      // Notify parent component of the update
-      onStarAdded?.(response.total);
+      await updateDoc(doc(db, 'stats', 'global'), {
+        totalStars: increment(1),
+        lastStarGivenAt: new Date().toISOString()
+      });
       toast.success('Star Given! ✨');
     } catch (error) {
-      console.error('Error giving star:', error);
+      handleFirestoreError(error, OperationType.WRITE, 'stats/global');
       toast.error('Failed to give star');
     }
 

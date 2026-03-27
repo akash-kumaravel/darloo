@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Camera, Heart, Maximize2, X, Plus, Image as ImageIcon, Send, Loader2 } from 'lucide-react';
+import { collection, query, onSnapshot, orderBy, addDoc } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { db, storage, auth } from '../firebase';
 import { Memory } from '../types';
-import { uploadImage, fileToBase64 } from '../services/api';
+import { handleFirestoreError, OperationType } from '../lib/firestore-error';
 import { toast } from 'sonner';
 
 export default function MemoryVault() {
@@ -16,19 +19,17 @@ export default function MemoryVault() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Load memories from localStorage
-    const savedMemories = localStorage.getItem('loveverse_memories');
-    if (savedMemories) {
-      try {
-        const memoryList: Memory[] = JSON.parse(savedMemories);
-        // Sort by date descending
-        memoryList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setMemories(memoryList);
-      } catch (error) {
-        console.error('Error loading memories:', error);
-      }
-    }
-    setLoading(false);
+    const path = 'memories';
+    const q = query(collection(db, path), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Memory));
+      setMemories(docs);
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, path);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const handleUpload = async () => {
@@ -44,42 +45,30 @@ export default function MemoryVault() {
 
     setIsUploading(true);
     try {
-      // Convert file to base64
-      const base64 = await fileToBase64(image);
-      
-      // Upload to server
-      const uploadResponse = await uploadImage(base64, `memory_${Date.now()}_${image.name}`);
-      
-      if (!uploadResponse.success) {
-        toast.error('Failed to upload image to server');
-        return;
-      }
+      const storageRef = ref(storage, `memories/${Date.now()}_${image.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, image);
 
-      // Save memory to localStorage
-      const savedMemories = localStorage.getItem('loveverse_memories');
-      const memories: Memory[] = savedMemories ? JSON.parse(savedMemories) : [];
-      
-      const newMemory: Memory = {
-        id: Date.now().toString(),
-        image: uploadResponse.url,
+      await new Promise((resolve, reject) => {
+        uploadTask.on('state_changed', null, reject, () => resolve(null));
+      });
+
+      const url = await getDownloadURL(storageRef);
+
+      await addDoc(collection(db, 'memories'), {
+        image: url,
         caption: caption,
         createdAt: new Date().toISOString(),
-        filename: uploadResponse.filename
-      };
-      
-      memories.push(newMemory);
-      localStorage.setItem('loveverse_memories', JSON.stringify(memories));
+        userId: auth.currentUser?.uid
+      });
 
-      toast.success('Memory saved! 📸 (Stored on server)');
+      toast.success('Memory added! 📸');
       setCaption('');
       setImage(null);
       setShowUpload(false);
-      
-      // Update local state
-      setMemories([newMemory, ...memories]);
     } catch (error) {
       console.error('Memory upload error:', error);
-      toast.error('Failed to upload memory');
+      toast.error('Failed to upload memory. Check CORS settings.');
+      handleFirestoreError(error, OperationType.CREATE, 'memories');
     } finally {
       setIsUploading(false);
     }

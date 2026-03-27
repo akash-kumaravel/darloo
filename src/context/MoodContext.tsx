@@ -1,5 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { MoodType } from '../types';
+import { db, auth } from '../firebase';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
+import { handleFirestoreError, OperationType } from '../lib/firestore-error';
 
 interface MoodContextType {
   currentMood: MoodType;
@@ -42,18 +46,50 @@ const moodSettings: Record<MoodType, MoodContextType['moodColors']> = {
 const MoodContext = createContext<MoodContextType | undefined>(undefined);
 
 export function MoodProvider({ children }: { children: React.ReactNode }) {
-  const [currentMood, setCurrentMood] = useState<MoodType>(() => {
-    const saved = localStorage.getItem('loveverse_mood');
-    return (saved as MoodType) || 'happy';
-  });
+  const [currentMood, setCurrentMood] = useState<MoodType>('happy');
 
   useEffect(() => {
-    localStorage.setItem('loveverse_mood', currentMood);
-  }, [currentMood]);
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        const unsubscribeMood = onSnapshot(doc(db, 'moods', user.uid), (snap) => {
+          if (snap.exists()) {
+            setCurrentMood(snap.data().mood as MoodType);
+          }
+        });
+        return () => unsubscribeMood();
+      }
+    });
+
+    return () => unsubAuth();
+  }, []);
 
   const setMood = async (mood: MoodType) => {
-    setCurrentMood(mood);
-    localStorage.setItem('loveverse_mood', mood);
+    const user = auth.currentUser;
+    if (!user) return;
+
+    try {
+      // Determine if current user is admin
+      const userEmail = user.email || '';
+      const isAdmin = userEmail === 'akashkumaravel3@gmail.com';
+      const displayName = isAdmin ? 'Admin' : (user.displayName || 'Darloo');
+
+      // Update the mood document with full data structure
+      await setDoc(doc(db, 'moods', user.uid), {
+        userId: user.uid,
+        userName: displayName,
+        userEmail: userEmail,
+        mood,
+        isAdmin,
+        updatedAt: new Date().toISOString(),
+        timestamp: new Date()
+      }, { merge: true }); // Use merge to not overwrite other fields
+
+      // Also log the mood change
+      console.log(`Mood updated: ${displayName} -> ${mood}`);
+    } catch (error) {
+      console.error('Mood update error:', error);
+      handleFirestoreError(error, OperationType.WRITE, `moods/${user.uid}`);
+    }
   };
 
   const value = {

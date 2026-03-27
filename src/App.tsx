@@ -1,4 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { 
+  doc, 
+  getDoc, 
+  setDoc as firebaseSetDoc, 
+  onSnapshot, 
+  collection, 
+  query, 
+  orderBy, 
+  limit 
+} from 'firebase/firestore';
+import { db } from './firebase';
 import { UserProfile, GameStats, Role } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -14,7 +25,6 @@ import {
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { cn } from './lib/utils';
-import { getStars } from './services/api';
 
 // Components
 import AdminPanel from './components/AdminPanel';
@@ -27,18 +37,16 @@ import Splash from './components/Splash';
 import { MoodProvider } from './context/MoodContext';
 
 export default function App() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [stats, setStats] = useState<GameStats>(() => {
-    const saved = localStorage.getItem('loveverse_stats');
-    return saved ? JSON.parse(saved) : { totalStars: 0, level: 1, xp: 0 };
-  });
+  const [stats, setStats] = useState<GameStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('home');
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
-  const [showUserLogin, setShowUserLogin] = useState(false);
+
+  // Auth states
+  const [loginStep, setLoginStep] = useState<'select' | 'admin' | 'user'>('select');
   const [adminUser, setAdminUser] = useState('');
   const [adminPass, setAdminPass] = useState('');
   const [userPass, setUserPass] = useState('');
@@ -48,176 +56,106 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Check localStorage for existing auth
   useEffect(() => {
-    const savedAuth = localStorage.getItem('loveverse_auth');
-    const savedRole = localStorage.getItem('loveverse_role');
-    const savedProfile = localStorage.getItem('loveverse_profile');
-    
-    if (savedAuth === 'true' && savedProfile) {
-      try {
-        const userData = JSON.parse(savedProfile) as UserProfile;
-        setProfile(userData);
-        setIsAdminMode(savedRole === 'admin');
-        
-        const mockUser = {
-          uid: userData.uid,
-          email: userData.email,
-          displayName: userData.name,
-          photoURL: userData.photo,
-          emailVerified: false,
-          isAnonymous: false,
-          metadata: {},
-          providerData: [],
-          phoneNumber: null,
-          tenantId: null,
-          delete: async () => {},
-          getIdToken: async () => '',
-          getIdTokenResult: async () => ({ token: '', expirationTime: '', authTime: '', issuedAtTime: '', signInProvider: null, signInSecondFactor: null, claims: {} }),
-          reload: async () => {},
-          toJSON: () => ({}),
-        } as any;
-        setUser(mockUser);
-      } catch (error) {
-        console.error('Error loading user profile:', error);
-        localStorage.removeItem('loveverse_auth');
-        localStorage.removeItem('loveverse_role');
-        localStorage.removeItem('loveverse_profile');
-      }
+    // Check for saved user session
+    const savedUser = localStorage.getItem('loveverse_user');
+    if (savedUser) {
+      const parsedUser = JSON.parse(savedUser) as UserProfile;
+      setUser(parsedUser);
+      setProfile(parsedUser);
     }
     setLoading(false);
   }, []);
 
-  const handleAdminLogin = async (e: React.FormEvent) => {
+  useEffect(() => {
+    if (!user) return;
+
+    const initializeStats = async () => {
+      try {
+        await firebaseSetDoc(doc(db, 'stats', 'global'), {
+          totalStars: 0,
+          level: 1,
+          xp: 0
+        });
+      } catch (e) {
+        toast.error('Failed to initialize stats');
+      }
+    };
+
+    const statsUnsubscribe = onSnapshot(doc(db, 'stats', 'global'), (doc) => {
+      if (doc.exists()) {
+        setStats(doc.data() as GameStats);
+      } else {
+        // Initialize stats if not exist
+        initializeStats();
+      }
+    });
+
+    return () => statsUnsubscribe();
+  }, [user]);
+
+  const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (adminUser === 'Admin' && adminPass === 'Akash@0901') {
       const adminProfile: UserProfile = {
-        uid: 'admin_user_akash',
-        name: 'Admin',
+        uid: 'admin_user',
+        name: 'Game Master',
         email: 'admin@loveverse.com',
         role: 'admin',
         photo: '',
       };
-      
-      localStorage.setItem('loveverse_auth', 'true');
-      localStorage.setItem('loveverse_role', 'admin');
-      localStorage.setItem('loveverse_profile', JSON.stringify(adminProfile));
-      
-      // Fetch stars from server
-      const serverStars = await getStars();
-      const newStats: GameStats = {
-        totalStars: serverStars,
-        level: 1,
-        xp: 0
-      };
-      setStats(newStats);
-      localStorage.setItem('loveverse_stats', JSON.stringify(newStats));
-      
-      const mockUser = {
-        uid: 'admin_user_akash',
-        email: 'admin@loveverse.com',
-        displayName: 'Admin',
-        photoURL: '',
-        emailVerified: false,
-        isAnonymous: false,
-        metadata: {},
-        providerData: [],
-        phoneNumber: null,
-        tenantId: null,
-        delete: async () => {},
-        getIdToken: async () => '',
-        getIdTokenResult: async () => ({ token: '', expirationTime: '', authTime: '', issuedAtTime: '', signInProvider: null, signInSecondFactor: null, claims: {} }),
-        reload: async () => {},
-        toJSON: () => ({}),
-      } as any;
-      
-      setUser(mockUser);
       setProfile(adminProfile);
+      setUser(adminProfile);
       setIsAdminMode(true);
+      setLoginStep('select');
       setAdminUser('');
       setAdminPass('');
-      setShowAdminLogin(false);
-      toast.success('Welcome Admin! 👑');
+      localStorage.setItem('loveverse_user', JSON.stringify(adminProfile));
+      toast.success('Admin Access Granted 👑');
     } else {
-      toast.error('Invalid Admin Credentials');
+      toast.error('Invalid Credentials');
     }
   };
 
-  const handleUserLogin = async (e: React.FormEvent) => {
+  const handleUserLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (userPass === 'Libii@1109') {
       const userProfile: UserProfile = {
-        uid: 'user_libii',
-        name: 'Libii',
-        email: 'libii@loveverse.com',
+        uid: 'user_player',
+        name: 'My Dear Wife',
+        email: 'user@loveverse.com',
         role: 'user',
         photo: '',
       };
-      
-      localStorage.setItem('loveverse_auth', 'true');
-      localStorage.setItem('loveverse_role', 'user');
-      localStorage.setItem('loveverse_profile', JSON.stringify(userProfile));
-      
-      // Fetch stars from server
-      const serverStars = await getStars();
-      const newStats: GameStats = {
-        totalStars: serverStars,
-        level: 1,
-        xp: 0
-      };
-      setStats(newStats);
-      localStorage.setItem('loveverse_stats', JSON.stringify(newStats));
-      
-      const mockUser = {
-        uid: 'user_libii',
-        email: 'libii@loveverse.com',
-        displayName: 'Libii',
-        photoURL: '',
-        emailVerified: false,
-        isAnonymous: false,
-        metadata: {},
-        providerData: [],
-        phoneNumber: null,
-        tenantId: null,
-        delete: async () => {},
-        getIdToken: async () => '',
-        getIdTokenResult: async () => ({ token: '', expirationTime: '', authTime: '', issuedAtTime: '', signInProvider: null, signInSecondFactor: null, claims: {} }),
-        reload: async () => {},
-        toJSON: () => ({}),
-      } as any;
-      
-      setUser(mockUser);
       setProfile(userProfile);
+      setUser(userProfile);
       setIsAdminMode(false);
+      setLoginStep('select');
       setUserPass('');
-      setShowUserLogin(false);
-      toast.success('Welcome Libii! 💖');
+      localStorage.setItem('loveverse_user', JSON.stringify(userProfile));
+      toast.success('Welcome my dear wife ❤️');
     } else {
       toast.error('Invalid Password');
     }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('loveverse_auth');
-    localStorage.removeItem('loveverse_role');
-    localStorage.removeItem('loveverse_profile');
     setUser(null);
     setProfile(null);
     setIsAdminMode(false);
     setActiveTab('home');
-    setShowAdminLogin(false);
-    setShowUserLogin(false);
-  };
-
-  const handleStarAdded = (newTotal: number) => {
-    setStats({ ...stats, totalStars: newTotal } as GameStats);
-    localStorage.setItem('loveverse_stats', JSON.stringify({ ...stats, totalStars: newTotal }));
+    setLoginStep('select');
+    setAdminUser('');
+    setAdminPass('');
+    setUserPass('');
+    localStorage.removeItem('loveverse_user');
+    toast.success('Logged out');
   };
 
   if (showSplash) return <Splash />;
   if (loading) return <div className="h-screen w-screen flex items-center justify-center cinematic-gradient"><Heart className="text-primary animate-pulse w-12 h-12" /></div>;
 
-  if (!user || !profile) {
+  if (!user) {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center cinematic-gradient p-6 text-center">
         <motion.div 
@@ -239,57 +177,60 @@ export default function App() {
           <p className="text-slate-500 mt-2 font-medium">A Private Cinematic Love Game</p>
         </motion.div>
 
-        {!showAdminLogin && !showUserLogin ? (
+        {loginStep === 'select' ? (
           <div className="w-full max-w-xs space-y-4">
-            <button 
-              onClick={() => setShowAdminLogin(true)}
-              className="w-full bg-gradient-to-r from-purple-600 to-primary text-white py-4 rounded-2xl font-bold shadow-lg shadow-purple-500/40 hover:shadow-purple-500/60 transition-all"
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setLoginStep('admin')}
+              className="w-full glass py-4 rounded-2xl flex items-center justify-center gap-3 font-bold text-slate-700 hover:bg-white transition-all"
             >
-              👑 Admin Login
-            </button>
-            <button 
-              onClick={() => setShowUserLogin(true)}
-              className="w-full bg-gradient-to-r from-primary to-pink-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary/40 hover:shadow-primary/60 transition-all"
+              <Lock className="w-6 h-6 text-primary" />
+              Game Master
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setLoginStep('user')}
+              className="w-full glass py-4 rounded-2xl flex items-center justify-center gap-3 font-bold text-slate-700 hover:bg-white transition-all"
             >
-              💖 User Login
-            </button>
+              <UserIcon className="w-6 h-6 text-primary" />
+              My Dear Wife
+            </motion.button>
           </div>
-        ) : null}
-
-        {showAdminLogin && (
+        ) : loginStep === 'admin' ? (
           <motion.form 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             onSubmit={handleAdminLogin}
             className="w-full max-w-xs glass p-6 rounded-3xl space-y-4"
           >
-            <div className="text-sm font-black text-primary uppercase tracking-widest mb-4">👑 Admin Console</div>
+            <div className="text-sm font-black text-primary uppercase tracking-widest mb-4">Game Master Login</div>
             <input 
               type="text" 
               placeholder="Username" 
               value={adminUser}
               onChange={(e) => setAdminUser(e.target.value)}
-              autoComplete="off"
               className="w-full bg-white/50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 ring-primary text-sm"
+              autoFocus
             />
             <input 
               type="password" 
               placeholder="Password" 
               value={adminPass}
               onChange={(e) => setAdminPass(e.target.value)}
-              autoComplete="off"
               className="w-full bg-white/50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 ring-primary text-sm"
             />
             <button 
               type="submit"
-              className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all"
+              className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg shadow-primary/20"
             >
-              Enter Admin
+              Unlock Vault
             </button>
             <button 
               type="button"
               onClick={() => {
-                setShowAdminLogin(false);
+                setLoginStep('select');
                 setAdminUser('');
                 setAdminPass('');
               }}
@@ -298,35 +239,32 @@ export default function App() {
               Back
             </button>
           </motion.form>
-        )}
-
-        {showUserLogin && (
+        ) : loginStep === 'user' ? (
           <motion.form 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             onSubmit={handleUserLogin}
             className="w-full max-w-xs glass p-6 rounded-3xl space-y-4"
           >
-            <div className="text-sm font-black text-primary uppercase tracking-widest mb-4">💖 Enter Heart</div>
-            <div className="text-center font-bold text-slate-700">Welcome Libii</div>
+            <div className="text-sm font-black text-primary uppercase tracking-widest mb-4">Welcome my dear wife</div>
             <input 
               type="password" 
-              placeholder="Password" 
+              placeholder="Enter Password" 
               value={userPass}
               onChange={(e) => setUserPass(e.target.value)}
-              autoComplete="off"
               className="w-full bg-white/50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 ring-primary text-sm"
+              autoFocus
             />
             <button 
               type="submit"
-              className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all"
+              className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg shadow-primary/20"
             >
-              Enter App
+              Enter
             </button>
             <button 
               type="button"
               onClick={() => {
-                setShowUserLogin(false);
+                setLoginStep('select');
                 setUserPass('');
               }}
               className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600"
@@ -334,12 +272,12 @@ export default function App() {
               Back
             </button>
           </motion.form>
-        )}
+        ) : null}
 
         <div className="mt-8 text-xs text-slate-400 uppercase tracking-widest font-bold">
-          For Two Hearts Only ❤️
+          For Two Hearts Only
         </div>
-        <Toaster position="top-center" richColors />
+        <Toaster position="top-center" />
       </div>
     );
   }
@@ -357,7 +295,7 @@ export default function App() {
               className="p-6"
             >
               {isAdminMode ? (
-                <AdminPanel stats={stats} profile={profile} onStarAdded={handleStarAdded} />
+                <AdminPanel stats={stats} profile={profile} />
               ) : (
                 <UserPanel stats={stats} profile={profile} />
               )}
@@ -367,18 +305,6 @@ export default function App() {
           {activeTab === 'gifts' && (
             <motion.div
               key="gifts"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="p-6"
-            >
-              <GiftSystem totalStars={stats?.totalStars || 0} onGiftOpened={() => {}} />
-            </motion.div>
-          )}
-
-          {activeTab === 'scrapbook' && (
-            <motion.div
-              key="scrapbook"
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
@@ -410,35 +336,33 @@ export default function App() {
             >
               <div className="glass rounded-3xl p-8 text-center">
                 <div className="relative inline-block">
-                  <div className="w-24 h-24 rounded-full border-4 border-primary shadow-xl mx-auto bg-primary/20 flex items-center justify-center">
-                    <UserIcon className="w-12 h-12 text-primary" />
-                  </div>
+                  <img src={profile?.photo} alt={profile?.name} className="w-24 h-24 rounded-full border-4 border-white shadow-xl mx-auto" />
                   <div className="absolute bottom-0 right-0 bg-primary p-2 rounded-full shadow-lg">
                     <Heart className="w-4 h-4 text-white fill-white" />
                   </div>
                 </div>
-                <h2 className="text-2xl font-bold mt-4">{profile?.name || 'Libii'}</h2>
-                <p className="text-slate-500">{profile?.email || 'libii@loveverse.com'}</p>
+                <h2 className="text-2xl font-bold mt-4">{profile?.name}</h2>
+                <p className="text-slate-500">{profile?.email}</p>
                 <div className="mt-6 inline-block px-4 py-1 bg-primary/10 text-primary rounded-full text-sm font-bold uppercase tracking-wider">
-                  {profile?.role === 'admin' ? '👑 Admin' : 'User'}
+                  {profile?.role}
                 </div>
 
                 <div className="mt-12 space-y-4">
                   {profile?.role === 'admin' && (
                     <button 
                       onClick={() => setIsAdminMode(!isAdminMode)}
-                      className="w-full py-4 glass rounded-2xl flex items-center justify-between px-6 font-bold text-slate-700 hover:bg-primary/10 transition-all"
+                      className="w-full py-4 glass rounded-2xl flex items-center justify-between px-6 font-bold text-slate-700"
                     >
                       <div className="flex items-center gap-3">
                         <Settings className="w-5 h-5 text-primary" />
-                        {isAdminMode ? 'Switch to Player View' : 'Switch to Admin View'}
+                        {isAdminMode ? 'Switch to Player View' : 'Enter Game Master Mode'}
                       </div>
-                      <ChevronRight className="w-5 h-5 text-primary" />
+                      <ChevronRight className="w-5 h-5" />
                     </button>
                   )}
                   <button 
                     onClick={handleLogout}
-                    className="w-full py-4 glass rounded-2xl flex items-center justify-between px-6 font-bold text-red-500 hover:bg-red-500/10 transition-all"
+                    className="w-full py-4 glass rounded-2xl flex items-center justify-between px-6 font-bold text-red-500"
                   >
                     <div className="flex items-center gap-3">
                       <LogOut className="w-5 h-5" />
