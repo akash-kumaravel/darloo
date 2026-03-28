@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Camera, Heart, Maximize2, X, Plus, Image as ImageIcon, Send, Loader2, Trash2 } from 'lucide-react';
 import { collection, query, onSnapshot, orderBy, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { uploadToImgBB } from '../lib/imgbb';
 import { db, auth } from '../firebase';
 import { Memory } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-error';
-import { uploadToImgbb } from '../lib/imgbb-upload';
 import { toast } from 'sonner';
 
 export default function MemoryVault() {
@@ -17,6 +17,7 @@ export default function MemoryVault() {
   const [image, setImage] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isAdmin = auth.currentUser?.email === 'akashuxui@gmail.com';
 
   useEffect(() => {
     const path = 'memories';
@@ -33,27 +34,22 @@ export default function MemoryVault() {
   }, []);
 
   const handleUpload = async () => {
-    console.log('📸 Memory upload started');
-    
     if (!image || !caption) {
       toast.error('Please select an image and add a caption');
       return;
     }
 
-    if (image.size > 10 * 1024 * 1024) {
-      toast.error('Image is too large (max 10MB)');
+    if (image.size > 5 * 1024 * 1024) {
+      toast.error('Image is too large (max 5MB)');
       return;
     }
 
     setIsUploading(true);
-    console.log('🚀 Calling uploadToImgbb...');
-    
     try {
-      const imageUrl = await uploadToImgbb(image);
-      console.log('✅ Got URL from Imgbb:', imageUrl);
+      const url = await uploadToImgBB(image);
 
       await addDoc(collection(db, 'memories'), {
-        image: imageUrl,
+        image: url,
         caption: caption,
         createdAt: new Date().toISOString(),
         userId: auth.currentUser?.uid
@@ -64,23 +60,23 @@ export default function MemoryVault() {
       setImage(null);
       setShowUpload(false);
     } catch (error) {
-      console.error('❌ Memory upload error:', error);
-      toast.error(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}. Check console.`);
+      console.error('Memory upload error:', error);
+      toast.error('Failed to upload memory. Check CORS settings.');
       handleFirestoreError(error, OperationType.CREATE, 'memories');
     } finally {
       setIsUploading(false);
     }
   };
 
-  const deleteMemory = async (memoryId: string) => {
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('Delete this memory?')) return;
+    
     try {
-      await deleteDoc(doc(db, 'memories', memoryId));
-      setSelectedMemory(null);
+      await deleteDoc(doc(db, 'memories', id));
       toast.success('Memory deleted! 🗑️');
     } catch (error) {
-      console.error('Delete error:', error);
-      toast.error('Failed to delete memory');
-      handleFirestoreError(error, OperationType.DELETE, 'memories');
+      handleFirestoreError(error, OperationType.DELETE, `memories/${id}`);
     }
   };
 
@@ -189,6 +185,14 @@ export default function MemoryVault() {
               <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 <Maximize2 className="text-white w-6 h-6" />
               </div>
+              {isAdmin && (
+                <button
+                  onClick={(e) => handleDelete(memory.id, e)}
+                  className="absolute top-2 right-2 p-2 bg-white/90 rounded-xl text-red-500 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-red-50"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
             </motion.div>
           ))}
         </div>
@@ -207,14 +211,6 @@ export default function MemoryVault() {
               className="absolute top-8 right-8 text-white/50 hover:text-white transition-colors"
             >
               <X className="w-8 h-8" />
-            </button>
-
-            <button 
-              onClick={() => deleteMemory(selectedMemory.id)}
-              className="absolute top-8 left-8 text-red-400 hover:text-red-300 transition-colors flex items-center gap-2"
-            >
-              <Trash2 className="w-5 h-5" />
-              <span className="text-xs font-bold uppercase">Delete</span>
             </button>
 
             <motion.div

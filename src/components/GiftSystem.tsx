@@ -42,21 +42,12 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
   const [revealingGiftSet, setRevealingGiftSet] = useState<GiftSet | null>(activeGiftSet);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [revealPhase, setRevealPhase] = useState<'idle' | 'flipping' | 'won' | 'revealing' | 'revealOthers' | 'complete'>('idle');
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
     if (activeGiftSet && !revealingGiftSet) {
       setRevealingGiftSet(activeGiftSet);
     }
   }, [activeGiftSet, revealingGiftSet]);
-
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
   const handleSelect = async (optionIndex: number) => {
     if (!revealingGiftSet || selectedOption !== null) return;
@@ -168,22 +159,22 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
 
   return (
     <div 
-      className="fixed inset-0 z-[60] bg-slate-50/95 backdrop-blur-3xl flex flex-col items-center justify-center p-3 md:p-6 overflow-hidden"
+      className="fixed inset-0 z-[60] bg-slate-50/95 backdrop-blur-3xl flex flex-col items-center justify-center p-4 md:p-6 overflow-hidden"
     >
-      <div className="w-full max-w-5xl flex flex-col items-center relative z-10 h-full">
+      <div className="w-full max-w-5xl flex flex-col items-center relative z-10 px-2 md:px-0">
               <AnimatePresence mode="wait">
                 {revealPhase === 'idle' && (
                     <div
-                      className="text-center mb-6 md:mb-16 pt-4 md:pt-0"
+                      className="text-center mb-8 md:mb-16"
                     >
-                      <h2 className="text-2xl md:text-6xl font-black text-slate-900 tracking-tighter mb-2 md:mb-4 drop-shadow-sm">PICK YOUR DESTINY</h2>
+                      <h2 className="text-3xl md:text-6xl font-black text-slate-900 tracking-tighter mb-2 md:mb-4 drop-shadow-sm uppercase">PICK YOUR DESTINY</h2>
                       <p className="text-primary font-black uppercase tracking-[0.4em] md:tracking-[0.6em] text-[10px] md:text-xs animate-pulse">Choose one mystery card</p>
                     </div>
                 )}
               </AnimatePresence>
 
-              {/* Card Grid */}
-              <div className="grid grid-cols-3 gap-2 md:gap-12 w-full perspective-2000 flex-1 flex items-center justify-center px-1 md:px-0">
+              {/* Card Grid - Forced Horizontal on all screens */}
+              <div className="grid grid-cols-3 gap-3 md:gap-12 w-full perspective-2000">
                 {[1, 2, 3].map((i) => {
                   const isSelected = selectedOption === i;
                   const isOther = selectedOption !== null && !isSelected;
@@ -197,43 +188,43 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                     <motion.div
                       key={i}
                       animate={{
-                        scale: isSelected ? (isMobile ? 1.05 : 1.2) : isOther ? (isMobile ? 0.9 : 0.8) : 1,
-                        y: isSelected ? (isMobile ? -30 : -60) : 0,
+                        scale: isSelected ? 1.15 : isOther ? 0.85 : 1,
+                        y: isSelected ? -30 : 0,
                         rotateY: isFlipped ? 180 : 0,
-                        z: isSelected ? 200 : 0
+                        z: isSelected ? 100 : 0
                       }}
                       transition={{ 
                         type: "spring",
-                        damping: 20,
-                        stiffness: 100,
-                        rotateY: { duration: 1.5, ease: "easeInOut" }
+                        damping: 25,
+                        stiffness: 120,
+                        rotateY: { duration: 1.2, ease: "easeInOut" }
                       }}
                       style={{ transformStyle: 'preserve-3d' }}
                       className={cn(
-                        "relative aspect-[3/4] md:aspect-[2/3] w-full min-w-0",
+                        "relative aspect-[2/3] w-full",
                         revealPhase === 'idle' ? "cursor-pointer hover:scale-105 active:scale-95 transition-all" : "cursor-default"
                       )}
                       onClick={() => handleSelect(i)}
                     >
                       {/* Card Front (Mystery) */}
                       <div 
-                        className="absolute inset-0 bg-gradient-to-br from-white to-slate-100 rounded-[1.5rem] md:rounded-[2.5rem] flex flex-col items-center justify-center gap-4 md:gap-8 border-3 md:border-4 border-white shadow-[0_10px_25px_md:shadow-[0_20px_50px_rgba(0,0,0,0.1)]"
+                        className="absolute inset-0 bg-gradient-to-br from-white to-slate-100 rounded-2xl md:rounded-[2.5rem] flex flex-col items-center justify-center gap-4 md:gap-8 border-2 md:border-4 border-white shadow-[0_10px_30px_rgba(0,0,0,0.1)]"
                         style={{ 
                           backfaceVisibility: 'hidden', 
                           WebkitBackfaceVisibility: 'hidden',
                           transform: 'translateZ(1px)'
                         }}
                       >
-                        <div className="w-12 md:w-20 h-12 md:h-20 bg-primary/5 rounded-full flex items-center justify-center border border-primary/10">
-                          <Heart className="w-6 md:w-10 h-6 md:h-10 text-primary animate-pulse" />
+                        <div className="w-10 h-10 md:w-20 md:h-20 bg-primary/5 rounded-full flex items-center justify-center border border-primary/10">
+                          <Heart className="w-5 h-5 md:w-10 md:h-10 text-primary animate-pulse" />
                         </div>
-                        <div className="text-slate-200 font-black text-3xl md:text-7xl opacity-30 tracking-tighter uppercase">Love</div>
+                        <div className="text-slate-200 font-black text-2xl md:text-7xl opacity-30 tracking-tighter uppercase">Love</div>
                       </div>
 
                       {/* Card Back (Revealed) */}
                       <div 
                         className={cn(
-                          "absolute inset-0 rounded-[1.5rem] md:rounded-[2.5rem] flex flex-col items-center p-4 md:p-8 border-3 md:border-4 overflow-hidden shadow-lg md:shadow-2xl",
+                          "absolute inset-0 rounded-2xl md:rounded-[2.5rem] flex flex-col items-center p-3 md:p-8 border-2 md:border-4 overflow-hidden shadow-2xl",
                           isSelected ? "bg-white border-primary" : "bg-white/80 border-slate-200 backdrop-blur-xl"
                         )}
                         style={{ 
@@ -245,8 +236,8 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                         }}
                       >
                         {isFlipped && (
-                          <div className="w-full h-full flex flex-col items-center overflow-y-auto">
-                            <div className="w-full aspect-square rounded-2xl md:rounded-3xl overflow-hidden mb-3 md:mb-6 shadow-lg md:shadow-2xl border-2 border-slate-100">
+                          <div className="w-full h-full flex flex-col items-center">
+                            <div className="w-full aspect-square rounded-xl md:rounded-3xl overflow-hidden mb-2 md:mb-6 shadow-lg md:shadow-2xl border border-slate-100">
                               <img 
                                 src={displayOpt.image} 
                                 alt={displayOpt.title} 
@@ -254,20 +245,20 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                               />
                             </div>
                             
-                            <div className="text-center w-full px-1 md:px-0">
+                            <div className="text-center w-full">
                               <h3 className={cn(
-                                "font-black tracking-tight uppercase leading-none mb-2 md:mb-3",
-                                isSelected ? "text-slate-900 text-sm md:text-xl" : "text-slate-700 text-xs md:text-sm"
+                                "font-black tracking-tight uppercase leading-none mb-1 md:mb-3",
+                                isSelected ? "text-slate-900 text-xs md:text-xl" : "text-slate-700 text-[8px] md:text-sm"
                               )}>
                                 {displayOpt.title}
                               </h3>
                               
                               {isSelected ? (
-                                <div className="text-primary font-black text-xs md:text-sm italic leading-relaxed mt-3 md:mt-6 px-2 md:px-4 py-3 md:py-4 bg-primary/5 rounded-xl md:rounded-2xl">
+                                <div className="text-primary font-black text-[10px] md:text-sm italic leading-relaxed mt-2 md:mt-6 px-2 md:px-4 bg-primary/5 py-2 md:py-4 rounded-xl md:rounded-2xl line-clamp-4 md:line-clamp-none">
                                   "{displayOpt.message}"
                                 </div>
                               ) : (
-                                <p className="text-slate-400 font-medium text-[9px] md:text-[10px] italic leading-tight mt-2 md:mt-4 line-clamp-2 px-1">
+                                <p className="text-slate-400 font-medium text-[6px] md:text-[10px] italic leading-tight mt-1 md:mt-4 line-clamp-2 md:line-clamp-3">
                                   "{displayOpt.message}"
                                 </p>
                               )}
@@ -284,7 +275,7 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                             scale: [1, 1.3, 1]
                           }}
                           transition={{ duration: 1.5, repeat: Infinity }}
-                          className="absolute inset-0 bg-primary/20 blur-[80px] rounded-[1.5rem] md:rounded-[2.5rem] -z-10"
+                          className="absolute inset-0 bg-primary/20 blur-[40px] md:blur-[80px] rounded-2xl md:rounded-[2.5rem] -z-10"
                         />
                       )}
                     </motion.div>
@@ -298,20 +289,20 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                   <motion.div 
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="absolute top-4 md:top-12 left-0 right-0 flex flex-col items-center justify-center pointer-events-none z-50"
+                    className="absolute top-4 md:top-12 left-0 right-0 flex flex-col items-center justify-center pointer-events-none z-50 px-4"
                   >
-                    <div className="text-center space-y-3 md:space-y-4 bg-white/80 backdrop-blur-xl p-5 md:p-10 rounded-2xl md:rounded-[4rem] border border-white shadow-lg md:shadow-2xl scale-75 md:scale-100 origin-top">
-                      <div className="inline-block px-3 md:px-4 py-1 bg-primary/10 rounded-full text-primary text-[9px] md:text-[10px] font-black uppercase tracking-[0.3em] mb-1 md:mb-2">
+                    <div className="text-center space-y-2 md:space-y-4 bg-white/90 backdrop-blur-xl p-6 md:p-10 rounded-[2.5rem] md:rounded-[4rem] border border-white shadow-2xl w-full max-w-sm md:max-w-none">
+                      <div className="inline-block px-3 py-0.5 md:px-4 md:py-1 bg-primary/10 rounded-full text-primary text-[8px] md:text-[10px] font-black uppercase tracking-[0.2em] md:tracking-[0.3em] mb-1 md:mb-2">
                         Mystery Unlocked
                       </div>
-                      <h2 className="text-2xl md:text-6xl font-black text-slate-900 tracking-tighter leading-tight">
+                      <h2 className="text-2xl md:text-6xl font-black text-slate-900 tracking-tighter leading-tight uppercase">
                         CONGRATULATIONS<br />
                         <span className="text-primary">MY DEAR WIFE! 💖</span>
                       </h2>
-                      <div className="h-1 md:h-1.5 w-20 md:w-24 bg-primary mx-auto rounded-full" />
+                      <div className="h-1 w-16 md:h-1.5 md:w-24 bg-primary mx-auto rounded-full" />
                       <div className="space-y-0.5 md:space-y-1">
-                        <p className="text-[9px] md:text-xs font-black text-slate-400 uppercase tracking-[0.5em]">You have received</p>
-                        <p className="text-lg md:text-2xl font-black text-slate-800 uppercase tracking-[0.2em]">
+                        <p className="text-[8px] md:text-xs font-black text-slate-400 uppercase tracking-[0.3em] md:tracking-[0.5em]">You have received</p>
+                        <p className="text-sm md:text-2xl font-black text-slate-800 uppercase tracking-[0.1em] md:tracking-[0.2em]">
                           {
                             (revealingGiftSet.option1.isPrimary ? revealingGiftSet.option1.title : 
                              revealingGiftSet.option2.isPrimary ? revealingGiftSet.option2.title : 
@@ -330,11 +321,11 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                   <motion.div 
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className="mt-12 md:mt-24 w-full max-w-xs md:max-w-md px-2 md:px-0"
+                    className="mt-12 md:mt-24 w-full max-w-xs md:max-w-md"
                   >
                     <button
                       onClick={handleClose}
-                      className="w-full bg-slate-900 text-white py-4 md:py-8 rounded-2xl md:rounded-[2.5rem] font-black text-sm md:text-xl tracking-[0.4em] md:tracking-[0.5em] uppercase shadow-lg md:shadow-[0_30px_60px_rgba(15,23,42,0.3)] hover:scale-105 active:scale-95 transition-all relative overflow-hidden group"
+                      className="w-full bg-slate-900 text-white py-5 md:py-8 rounded-2xl md:rounded-[2.5rem] font-black text-sm md:text-xl tracking-[0.3em] md:tracking-[0.5em] uppercase shadow-[0_20px_40px_rgba(15,23,42,0.3)] hover:scale-105 active:scale-95 transition-all relative overflow-hidden group"
                     >
                       <div className="absolute inset-0 bg-primary/10 translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500" />
                       <span className="relative z-10">Continue Journey</span>

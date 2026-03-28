@@ -8,6 +8,8 @@ import StarReactor from './StarReactor';
 import GiftSystem from './GiftSystem';
 import MoodEngine from './MoodEngine';
 import ChoiceMoments from './ChoiceMoments';
+import LoveTasks from './LoveTasks';
+import BucketList from './BucketList';
 import { handleFirestoreError, OperationType } from '../lib/firestore-error';
 
 interface UserPanelProps {
@@ -157,6 +159,12 @@ export default function UserPanel({ stats, profile }: UserPanelProps) {
 
       {/* Choice Moments */}
       <ChoiceMoments />
+
+      {/* Love Missions */}
+      <LoveTasks isAdmin={profile?.role === 'admin'} />
+
+      {/* Bucket List */}
+      <BucketList isAdmin={profile?.role === 'admin'} />
 
       {/* Gift System Modal */}
       <AnimatePresence>

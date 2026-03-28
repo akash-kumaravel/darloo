@@ -41,6 +41,7 @@ import Scrapbook from './components/Scrapbook';
 import MemoryVault from './components/MemoryVault';
 import Navigation from './components/Navigation';
 import Splash from './components/Splash';
+import NotificationSystem from './components/NotificationSystem';
 import ErrorBoundary from './components/ErrorBoundary';
 import { MoodProvider } from './context/MoodContext';
 
@@ -98,7 +99,7 @@ function AppContent() {
         name: name,
         email: role === 'admin' ? 'admin@starfall.com' : 'darloo@starfall.com',
         role: role,
-        photo: role === 'admin' ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin' : 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop',
+        photo: role === 'admin' ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin' : '/profile.png',
       };
       await firebaseSetDoc(doc(db, 'users', firebaseUser.uid), newProfile);
       setProfile(newProfile);
@@ -308,13 +309,13 @@ function AppContent() {
         <div className="mt-8 text-xs text-slate-400 uppercase tracking-widest font-bold">
           For Two Hearts Only
         </div>
-        <Toaster position="top-center" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen cinematic-gradient pb-40 md:pb-24 overflow-x-hidden">
+    <div className="min-h-screen cinematic-gradient pb-24 overflow-x-hidden">
+      <NotificationSystem />
       <AnimatePresence mode="wait">
           {activeTab === 'home' && (
             <motion.div

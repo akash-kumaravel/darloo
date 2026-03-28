@@ -65,7 +65,7 @@ service cloud.firestore {
     
     function isAdmin() {
       return isAuthenticated() && 
-        (request.auth.token.email == "admin@starfall.com" || 
+        (request.auth.token.email == "akashuxui@gmail.com" || 
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
@@ -99,9 +99,7 @@ service cloud.firestore {
 
     // Stats
     match /stats/global {
-      allow read: if true; // Temporarily allow public read to debug login issues
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
+      allow read, write: if isAuthenticated();
     }
 
     // Gift Sets
@@ -121,7 +119,7 @@ service cloud.firestore {
 
     // Messages
     match /messages/daily {
-      allow read: if true; // Temporarily allow public read to debug login issues
+      allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
 
@@ -134,15 +132,15 @@ service cloud.firestore {
     // Memories
     match /memories/{id} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAdmin() || isOwner(resource.data.userId);
-      allow delete: if isAdmin() || isOwner(resource.data.userId);
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
     }
 
     // Moods
     match /moods/{userId} {
       allow read: if isAuthenticated();
       allow write: if isOwner(userId);
+      allow delete: if isAdmin();
     }
 
     // Choice Moments
@@ -154,6 +152,20 @@ service cloud.firestore {
 
     // Choice Responses
     match /choiceResponses/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    // Love Tasks
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated();
+      allow create, delete: if isAdmin();
+      allow update: if isAuthenticated();
+    }
+
+    // Bucket List
+    match /bucketList/{itemId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update, delete: if isAdmin();

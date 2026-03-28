@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Star, Heart, Minus, Gift, Sparkles } from 'lucide-react';
 import { doc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
@@ -30,6 +30,26 @@ export default function StarReactor({
   const [isAnimating, setIsAnimating] = useState(false);
   const [lastClick, setLastClick] = useState(0);
   const [floatingHearts, setFloatingHearts] = useState<{ id: number; x: number; y: number }[]>([]);
+  const ws = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    ws.current = new WebSocket(`${protocol}//${host}`);
+
+    return () => {
+      if (ws.current) ws.current.close();
+    };
+  }, []);
+
+  const sendNotification = (type: 'star' | 'mission' | 'memory' | 'choice', title: string, message: string) => {
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({
+        type: 'notification',
+        payload: { type, title, message }
+      }));
+    }
+  };
 
   const handleGiveStar = async () => {
     const now = Date.now();
@@ -63,6 +83,7 @@ export default function StarReactor({
         lastStarGivenAt: new Date().toISOString()
       });
       toast.success('Star Given! ✨');
+      sendNotification('star', 'You got a Star! ✨', 'The admin just gave you a star for being awesome!');
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'stats/global');
       toast.error('Failed to give star');

@@ -35,7 +35,7 @@ export default function Scrapbook() {
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black tracking-tighter">MY GIFTS</h1>
+          <h1 className="text-3xl font-black tracking-tighter uppercase">MY GIFTS</h1>
           <p className="text-slate-500 text-sm font-medium">Your Unlocked Treasures</p>
         </div>
         <div className="bg-primary/10 p-3 rounded-2xl">
@@ -52,7 +52,7 @@ export default function Scrapbook() {
           <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto">
             <Calendar className="text-slate-300 w-8 h-8" />
           </div>
-          <div className="font-bold text-slate-400">Your scrapbook is empty. Unlock gifts to fill it!</div>
+          <div className="font-bold text-slate-400">Your gifts collection is empty. Unlock gifts to fill it!</div>
         </div>
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">

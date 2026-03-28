@@ -1,5 +1,9 @@
 {
-  "name": "starfall",
+  "name": "Remix: starfall",
   "description": "A private cinematic love game for two. A gamified emotional journey with stars, gifts, and memories.",
-  "requestFramePermissions": ["camera", "microphone", "geolocation"]
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
 }

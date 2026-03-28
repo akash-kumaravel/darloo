@@ -136,6 +136,36 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "momentId", "choiceLabel", "createdAt"]
+    },
+    "LoveTask": {
+      "title": "LoveTask",
+      "description": "A task assigned by the admin to the user for star rewards",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "stars": { "type": "integer" },
+        "status": { "type": "string", "enum": ["pending", "completed_by_user", "approved_by_admin", "claimed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "claimedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "stars", "status", "createdAt"]
+    },
+    "BucketListItem": {
+      "title": "BucketListItem",
+      "description": "A shared bucket list item for the couple",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "todo", "completed"] },
+        "image": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -148,6 +178,8 @@
     "/memories/{id}": { "schema": "Memory", "description": "Memory vault" },
     "/moods/{userId}": { "schema": "Mood", "description": "User moods" },
     "/choiceMoments/{id}": { "schema": "ChoiceMoment", "description": "Interactive moments" },
-    "/choiceResponses/{id}": { "schema": "ChoiceResponse", "description": "User responses to moments" }
+    "/choiceResponses/{id}": { "schema": "ChoiceResponse", "description": "User responses to moments" },
+    "/tasks/{id}": { "schema": "LoveTask", "description": "Love tasks assigned to user" },
+    "/bucketList/{id}": { "schema": "BucketListItem", "description": "Shared bucket list" }
   }
 }

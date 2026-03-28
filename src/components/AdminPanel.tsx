@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, 
@@ -13,12 +13,19 @@ import {
   X,
   ChevronRight,
   Sparkles,
+  RotateCcw,
+  CheckCircle2,
+  Trophy,
+  Camera,
+  Heart,
   Star
 } from 'lucide-react';
+import { uploadToImgBB } from '../lib/imgbb';
 import { 
   doc, 
   setDoc, 
   updateDoc, 
+  deleteDoc,
   collection, 
   addDoc, 
   onSnapshot,
@@ -27,15 +34,13 @@ import {
   limit,
   getDocs,
   where,
-  increment,
-  deleteDoc
+  writeBatch
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { GameStats, UserProfile, DailyMessage, NextEvent, UserMood, ChoiceResponse, ChoiceMoment, GiftSet } from '../types';
+import { GameStats, UserProfile, DailyMessage, NextEvent, UserMood, ChoiceResponse, GiftSet } from '../types';
 import { toast } from 'sonner';
 import StarReactor from './StarReactor';
 import { handleFirestoreError, OperationType } from '../lib/firestore-error';
-import { uploadToImgbb } from '../lib/imgbb-upload';
 import { Smile, Heart as HeartIcon, Frown, Moon } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -54,17 +59,54 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
   const [showGiftForm, setShowGiftForm] = useState(false);
   const [userMoods, setUserMoods] = useState<UserMood[]>([]);
   const [choiceResponses, setChoiceResponses] = useState<ChoiceResponse[]>([]);
-  const [choiceMoments, setChoiceMoments] = useState<ChoiceMoment[]>([]);
   const [showChoiceForm, setShowChoiceForm] = useState(false);
   const [existingGiftSets, setExistingGiftSets] = useState<GiftSet[]>([]);
-  const [rewardedResponses, setRewardedResponses] = useState<Set<string>>(new Set());
+  const [currentEvent, setCurrentEvent] = useState<NextEvent | null>(null);
+  const [memories, setMemories] = useState<any[]>([]);
+  const [choiceMoments, setChoiceMoments] = useState<any[]>([]);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const ws = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    ws.current = new WebSocket(`${protocol}//${host}`);
+
+    return () => {
+      if (ws.current) ws.current.close();
+    };
+  }, []);
+
+  const sendNotification = (type: 'star' | 'mission' | 'memory' | 'choice', title: string, message: string) => {
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({
+        type: 'notification',
+        payload: { type, title, message }
+      }));
+    }
+  };
+
+  // Love Tasks State
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskDesc, setTaskDesc] = useState('');
+  const [taskStars, setTaskStars] = useState(5);
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [showTaskForm, setShowTaskForm] = useState(false);
+
+  // Bucket List State
+  const [bucketTitle, setBucketTitle] = useState('');
+  const [bucketDesc, setBucketDesc] = useState('');
+  const [bucketList, setBucketList] = useState<any[]>([]);
+  const [showBucketForm, setShowBucketForm] = useState(false);
+  const [isCompletingBucketItem, setIsCompletingBucketItem] = useState<string | null>(null);
+  const [bucketImage, setBucketImage] = useState<File | null>(null);
 
   // Choice Moment Form State
   const [choiceQuestion, setChoiceQuestion] = useState('');
   const [choiceOptions, setChoiceOptions] = useState([
     { label: '', emoji: '🎬', response: '', reward: 5 },
     { label: '', emoji: '🌆', response: '', reward: 5 },
-    { label: '', emoji: '🏡', response: '', reward: 5 },
   ]);
 
   useEffect(() => {
@@ -94,29 +136,60 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
       (snap) => {
         const responses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChoiceResponse));
         setChoiceResponses(responses);
-        // Track which responses have been rewarded
-        const rewarded = new Set(
-          responses.filter(r => r.rewarded).map(r => r.id)
-        );
-        setRewardedResponses(rewarded);
       }
     );
 
-    const unsubscribeMoments = onSnapshot(
-      query(collection(db, 'choiceMoments'), orderBy('createdAt', 'desc')),
+    const unsubscribeTasks = onSnapshot(
+      query(collection(db, 'tasks'), orderBy('createdAt', 'desc')),
       (snap) => {
-        const moments = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChoiceMoment));
-        setChoiceMoments(moments);
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.GET, 'choiceMoments');
+        const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setTasks(docs);
+      }
+    );
+
+    const unsubscribeBucket = onSnapshot(
+      query(collection(db, 'bucketList'), orderBy('createdAt', 'desc')),
+      (snap) => {
+        const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setBucketList(docs);
       }
     );
 
     return () => {
       unsubscribeMoods();
       unsubscribeResponses();
-      unsubscribeMoments();
+      unsubscribeTasks();
+      unsubscribeBucket();
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribeEvent = onSnapshot(doc(db, 'events', 'next'), (doc) => {
+      if (doc.exists()) {
+        setCurrentEvent(doc.data() as NextEvent);
+      } else {
+        setCurrentEvent(null);
+      }
+    });
+
+    const unsubscribeMemories = onSnapshot(
+      query(collection(db, 'memories'), orderBy('createdAt', 'desc')),
+      (snap) => {
+        setMemories(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }
+    );
+
+    const unsubscribeChoices = onSnapshot(
+      query(collection(db, 'choiceMoments'), orderBy('createdAt', 'desc')),
+      (snap) => {
+        setChoiceMoments(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }
+    );
+
+    return () => {
+      unsubscribeEvent();
+      unsubscribeMemories();
+      unsubscribeChoices();
     };
   }, []);
 
@@ -131,10 +204,32 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    const cleanupOldResponses = async () => {
+      try {
+        const oneDayAgo = new Date();
+        oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+        const q = query(collection(db, 'choiceResponses'), where('createdAt', '<', oneDayAgo.toISOString()));
+        const oldResponses = await getDocs(q);
+        
+        if (!oldResponses.empty) {
+          const batch = writeBatch(db);
+          oldResponses.docs.forEach((doc) => batch.delete(doc.ref));
+          await batch.commit();
+          console.log(`Cleaned up ${oldResponses.size} old choice responses.`);
+        }
+      } catch (error) {
+        console.error('Error cleaning up old responses:', error);
+      }
+    };
+
+    cleanupOldResponses();
+  }, []);
+
   const [giftOptions, setGiftOptions] = useState([
-    { title: '', message: '', image: null as File | null, isPrimary: true },
-    { title: '', message: '', image: null as File | null, isPrimary: false },
-    { title: '', message: '', image: null as File | null, isPrimary: false },
+    { title: '', image: null as File | null, isPrimary: true },
+    { title: '', image: null as File | null, isPrimary: false },
+    { title: '', image: null as File | null, isPrimary: false },
   ]);
 
   const updateDailyMessage = async () => {
@@ -166,34 +261,44 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
     }
   };
 
+  const deleteNextEvent = async () => {
+    try {
+      await deleteDoc(doc(db, 'events', 'next'));
+      toast.success('Event deleted! 🗑️');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'events/next');
+    }
+  };
+
   const uploadMemory = async () => {
     if (!memoryImage || !memoryCaption) return;
     
-    // Check file size (limit to 10MB for Imgbb)
-    if (memoryImage.size > 10 * 1024 * 1024) {
-      toast.error('Image is too large (max 10MB)');
+    // Check file size (limit to 5MB)
+    if (memoryImage.size > 5 * 1024 * 1024) {
+      toast.error('Image is too large (max 5MB)');
       return;
     }
 
     setIsUploading(true);
-    console.log('Starting memory upload to Imgbb...', memoryImage.name);
+    console.log('Starting memory upload to ImgBB...', memoryImage.name);
     try {
-      const imageUrl = await uploadToImgbb(memoryImage);
-      console.log('Image URL obtained:', imageUrl);
+      const url = await uploadToImgBB(memoryImage);
+      console.log('ImgBB URL obtained:', url);
 
       await addDoc(collection(db, 'memories'), {
         weeklyMemory: memoryCaption,
-        image: imageUrl,
+        image: url,
         caption: memoryCaption,
         createdAt: new Date().toISOString()
       });
 
       toast.success('Memory uploaded! 📸');
+      sendNotification('memory', 'New Memory Shared! 📸', memoryCaption);
       setMemoryCaption('');
       setMemoryImage(null);
     } catch (error) {
       console.error('Upload error details:', error);
-      toast.error(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}. Check browser console.`);
+      toast.error('Upload failed. Check console for details.');
       handleFirestoreError(error, OperationType.CREATE, 'memories');
     } finally {
       setIsUploading(false);
@@ -201,15 +306,20 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
     }
   };
 
+  const deleteMemory = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'memories', id));
+      toast.success('Memory deleted! 🗑️');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `memories/${id}`);
+    }
+  };
+
   const createGiftSet = async () => {
     // Check all images first
     for (const opt of giftOptions) {
-      if (!opt.image) {
-        toast.error(`Please select an image for ${opt.title || 'gift'}`);
-        return;
-      }
-      if (opt.image.size > 10 * 1024 * 1024) {
-        toast.error(`Image for ${opt.title || 'gift'} is too large (max 10MB)`);
+      if (opt.image && opt.image.size > 5 * 1024 * 1024) {
+        toast.error(`Image for ${opt.title || 'gift'} is too large (max 5MB)`);
         return;
       }
     }
@@ -218,19 +328,17 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
     console.log('Starting gift set creation...');
     try {
       const uploadedOptions = await Promise.all(giftOptions.map(async (opt, i) => {
-        if (!opt.image) {
-          throw new Error(`Image ${i + 1} is missing. All gifts must have images.`);
+        let url = `https://picsum.photos/seed/gift${i}/400/400`;
+        if (opt.image) {
+          console.log(`Uploading gift image ${i + 1} to ImgBB:`, opt.image.name);
+          url = await uploadToImgBB(opt.image);
+          console.log(`Gift image ${i + 1} URL:`, url);
         }
-
-        console.log(`Uploading gift image ${i + 1}:`, opt.image.name);
-        const imageUrl = await uploadToImgbb(opt.image);
-        console.log(`Gift image ${i + 1} URL:`, imageUrl);
-        
         const isPrimary = opt.isPrimary || false;
         return { 
           title: opt.title || `Gift ${i + 1}`, 
-          message: opt.message || 'A special surprise!', 
-          image: imageUrl,
+          message: 'A special surprise!', 
+          image: url,
           isPrimary: isPrimary
         };
       }));
@@ -249,13 +357,13 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
       toast.success('Gift set created! 🎁');
       setShowGiftForm(false);
       setGiftOptions([
-        { title: '', message: '', image: null, isPrimary: true },
-        { title: '', message: '', image: null, isPrimary: false },
-        { title: '', message: '', image: null, isPrimary: false },
+        { title: '', image: null, isPrimary: true },
+        { title: '', image: null, isPrimary: false },
+        { title: '', image: null, isPrimary: false },
       ]);
     } catch (error) {
       console.error('Gift set creation error:', error);
-      toast.error(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}. Check browser console.`);
+      toast.error('Gift set creation failed. Check console.');
       handleFirestoreError(error, OperationType.CREATE, 'giftSets');
     } finally {
       setIsUploading(false);
@@ -293,10 +401,227 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
       });
 
       toast.success('Choice Moment activated! ✨');
+      sendNotification('choice', 'New Choice Moment! ✨', choiceQuestion);
       setShowChoiceForm(false);
       setChoiceQuestion('');
+      setChoiceOptions([
+        { label: '', emoji: '🎬', response: '', reward: 5 },
+        { label: '', emoji: '🌆', response: '', reward: 5 },
+      ]);
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'choiceMoments');
+    }
+  };
+
+  const deleteChoiceMoment = async (id: string) => {
+    try {
+      // Cascading delete: delete all associated responses
+      const q = query(collection(db, 'choiceResponses'), where('momentId', '==', id));
+      const responses = await getDocs(q);
+      
+      const batch = writeBatch(db);
+      responses.docs.forEach((doc) => batch.delete(doc.ref));
+      batch.delete(doc(db, 'choiceMoments', id));
+      
+      await batch.commit();
+      toast.success('Choice moment and responses deleted! 🗑️');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `choiceMoments/${id}`);
+    }
+  };
+
+  const resetStats = async () => {
+    setIsResetting(true);
+    try {
+      // 1. Reset global stats
+      await updateDoc(doc(db, 'stats', 'global'), {
+        totalStars: 0,
+        giftsReceived: 0,
+        lastGiftStarCount: 0
+      });
+
+      // 2. Clear unlocked gifts collection (in batches of 10 to stay under rules 'get' limit)
+      const collectionSnap = await getDocs(collection(db, 'collection'));
+      if (!collectionSnap.empty) {
+        const chunks = [];
+        for (let i = 0; i < collectionSnap.docs.length; i += 10) {
+          chunks.push(collectionSnap.docs.slice(i, i + 10));
+        }
+        for (const chunk of chunks) {
+          const batch = writeBatch(db);
+          chunk.forEach((doc) => batch.delete(doc.ref));
+          await batch.commit();
+        }
+      }
+
+      // 3. Reset gift sets unlocked status
+      const giftSetsSnap = await getDocs(collection(db, 'giftSets'));
+      if (!giftSetsSnap.empty) {
+        const batch = writeBatch(db);
+        giftSetsSnap.docs.forEach((doc) => {
+          batch.update(doc.ref, { 
+            unlocked: false,
+            unlockedAt: null 
+          });
+        });
+        await batch.commit();
+      }
+
+      // 4. Clear choice responses
+      const responsesSnap = await getDocs(collection(db, 'choiceResponses'));
+      if (!responsesSnap.empty) {
+        const chunks = [];
+        for (let i = 0; i < responsesSnap.docs.length; i += 10) {
+          chunks.push(responsesSnap.docs.slice(i, i + 10));
+        }
+        for (const chunk of chunks) {
+          const batch = writeBatch(db);
+          chunk.forEach((doc) => batch.delete(doc.ref));
+          await batch.commit();
+        }
+      }
+
+      // 5. Clear moods
+      const moodsSnap = await getDocs(collection(db, 'moods'));
+      if (!moodsSnap.empty) {
+        const batch = writeBatch(db);
+        moodsSnap.docs.forEach((doc) => batch.delete(doc.ref));
+        await batch.commit();
+      }
+
+      toast.success('Everything reset successfully! 🔄');
+      setShowResetConfirm(false);
+    } catch (error: any) {
+      console.error('Reset error:', error);
+      toast.error('Reset failed: ' + (error.message || 'Unknown error'));
+      handleFirestoreError(error, OperationType.UPDATE, 'stats/global');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const createTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!taskTitle) return;
+
+    try {
+      await addDoc(collection(db, 'tasks'), {
+        title: taskTitle,
+        description: taskDesc,
+        stars: taskStars,
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      });
+      setTaskTitle('');
+      setTaskDesc('');
+      setTaskStars(5);
+      setShowTaskForm(false);
+      toast.success('Love Mission assigned! 🚀');
+      sendNotification('mission', 'New Love Mission! 🚀', taskTitle);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'tasks');
+    }
+  };
+
+  const approveTask = async (taskId: string) => {
+    try {
+      await updateDoc(doc(db, 'tasks', taskId), {
+        status: 'approved_by_admin',
+        approvedAt: new Date().toISOString()
+      });
+      toast.success('Task approved! User can now claim stars. ✨');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `tasks/${taskId}`);
+    }
+  };
+
+  const deleteTask = async (taskId: string) => {
+    try {
+      await deleteDoc(doc(db, 'tasks', taskId));
+      toast.success('Task deleted');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `tasks/${taskId}`);
+    }
+  };
+
+  const createBucketItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bucketTitle) return;
+
+    try {
+      await addDoc(collection(db, 'bucketList'), {
+        title: bucketTitle,
+        description: bucketDesc,
+        status: 'todo',
+        createdAt: new Date().toISOString()
+      });
+      setBucketTitle('');
+      setBucketDesc('');
+      setShowBucketForm(false);
+      toast.success('Added to Bucket List! 🌍');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'bucketList');
+    }
+  };
+
+  const completeBucketItem = async (itemId: string, title: string) => {
+    if (!bucketImage) {
+      toast.error('Please select a photo of the memory! 📸');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const imageUrl = await uploadToImgBB(bucketImage);
+      
+      const batch = writeBatch(db);
+      const completedAt = new Date().toISOString();
+
+      // Update bucket item
+      batch.update(doc(db, 'bucketList', itemId), {
+        status: 'completed',
+        image: imageUrl,
+        completedAt: completedAt
+      });
+
+      // Create Memory automatically
+      const memoryRef = doc(collection(db, 'memories'));
+      batch.set(memoryRef, {
+        weeklyMemory: `Bucket List Fulfilled: ${title}`,
+        image: imageUrl,
+        caption: `We finally did it! ${title} ❤️`,
+        createdAt: completedAt
+      });
+
+      await batch.commit();
+      
+      setBucketImage(null);
+      setIsCompletingBucketItem(null);
+      toast.success('Bucket List item fulfilled and added to Memories! 🥂');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `bucketList/${itemId}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const activateBucketItem = async (itemId: string) => {
+    try {
+      await updateDoc(doc(db, 'bucketList', itemId), {
+        status: 'todo'
+      });
+      toast.success('Dream activated! ✨');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `bucketList/${itemId}`);
+    }
+  };
+
+  const deleteBucketItem = async (itemId: string) => {
+    try {
+      await deleteDoc(doc(db, 'bucketList', itemId));
+      toast.success('Item removed from Bucket List');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `bucketList/${itemId}`);
     }
   };
 
@@ -310,82 +635,6 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
     }
   };
 
-  const rewardChoiceResponse = async (response: ChoiceResponse) => {
-    if (rewardedResponses.has(response.id)) {
-      toast.error('Already rewarded this choice');
-      return;
-    }
-
-    try {
-      // Award 1 star to the user's stats
-      const statsRef = doc(db, 'stats', 'global');
-      await updateDoc(statsRef, {
-        totalStars: increment(1),
-        xp: increment(10)
-      });
-
-      // Mark the response as rewarded in Firestore
-      await updateDoc(doc(db, 'choiceResponses', response.id), {
-        rewarded: true
-      });
-
-      // Mark the response as rewarded in local state
-      setRewardedResponses(prev => new Set([...prev, response.id]));
-      toast.success(`${response.userName}'s choice rewarded! +1 Star ⭐`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'stats/global');
-    }
-  };
-
-  const deleteNextEvent = async () => {
-    try {
-      await deleteDoc(doc(db, 'events', 'next'));
-      toast.success('Next event deleted.');
-      setEventName('');
-      setEventDate('');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, 'events/next');
-    }
-  };
-
-  const deleteChoiceMoment = async (momentId: string) => {
-    try {
-      await deleteDoc(doc(db, 'choiceMoments', momentId));
-      toast.success('Interactive moment deleted! 🗑️');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `choiceMoments/${momentId}`);
-    }
-  };
-
-  const resetAllStats = async () => {
-    try {
-      const statsRef = doc(db, 'stats', 'global');
-      await updateDoc(statsRef, {
-        totalStars: 0,
-        giftsReceived: 0,
-        lastGiftStarCount: 0
-      });
-      toast.success('All stats reset! 🔄');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'stats/global');
-    }
-  };
-
-  const deleteChoiceResponse = async (response: ChoiceResponse) => {
-    try {
-      await deleteDoc(doc(db, 'choiceResponses', response.id));
-      // Remove from local rewarded set
-      setRewardedResponses(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(response.id);
-        return newSet;
-      });
-      toast.success('Response deleted! 🗑️');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, 'choiceResponses');
-    }
-  };
-
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -393,16 +642,72 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
           <h1 className="text-3xl font-black tracking-tighter">GAME MASTER</h1>
           <p className="text-slate-500 text-sm font-medium">Control the starfall</p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={resetAllStats}
-          className="flex items-center gap-2 bg-red-500/20 hover:bg-red-500/30 text-red-600 px-4 py-2 rounded-2xl transition-all font-bold text-sm uppercase tracking-widest"
-        >
-          <Settings className="w-5 h-5" />
-          Reset Stats
-        </motion.button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setShowResetConfirm(true)}
+            className="bg-red-50 text-red-500 p-3 rounded-2xl hover:bg-red-100 transition-colors"
+            title="Reset All Stats"
+          >
+            <RotateCcw className="w-6 h-6" />
+          </button>
+          <div className="bg-primary/10 p-3 rounded-2xl">
+            <Settings className="text-primary w-6 h-6" />
+          </div>
+        </div>
       </div>
+
+      {/* Reset Confirmation Modal */}
+      <AnimatePresence>
+        {showResetConfirm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowResetConfirm(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-sm glass p-8 rounded-[2.5rem] space-y-6 text-center shadow-2xl border-2 border-white/20"
+            >
+              <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto">
+                <RotateCcw className="w-10 h-10 text-red-500" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-2xl font-black text-slate-800 tracking-tighter">RESET EVERYTHING?</h2>
+                <p className="text-sm text-slate-500 font-medium">
+                  This will reset all stars, clear all unlocked gifts, and wipe all responses. This action is permanent.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={resetStats}
+                  disabled={isResetting}
+                  className="w-full bg-red-500 text-white py-4 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-red-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isResetting ? (
+                    <>
+                      <RotateCcw className="w-4 h-4 animate-spin" />
+                      Resetting...
+                    </>
+                  ) : (
+                    'Yes, Reset All'
+                  )}
+                </button>
+                <button 
+                  onClick={() => setShowResetConfirm(false)}
+                  className="w-full bg-slate-100 text-slate-500 py-4 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-slate-200 transition-all"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <StarReactor 
         totalStars={stats?.totalStars || 0} 
@@ -457,43 +762,17 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
             choiceResponses.map((r, i) => (
               <div key={i} className="bg-white/30 p-4 rounded-2xl space-y-2">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-sm font-black text-slate-700">{r.userName}</span>
-                    <span className="text-[10px] text-slate-400 font-bold ml-1">(ID: {r.userId.slice(0, 8)}...)</span>
-                  </div>
+                  <span className="text-sm font-black text-slate-700">{r.userName}</span>
                   <span className="text-[10px] text-slate-400 font-bold uppercase">
                     {new Date(r.createdAt).toLocaleTimeString()}
                   </span>
                 </div>
                 <div className="text-xs text-slate-500 italic">"{r.question}"</div>
-                <div className="flex items-center justify-between bg-white/50 p-3 rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{r.choiceEmoji}</span>
-                    <span className="text-xs font-bold text-primary uppercase tracking-widest">
-                      {r.choiceLabel}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => rewardChoiceResponse(r)}
-                      disabled={rewardedResponses.has(r.id)}
-                      className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold uppercase transition-all ${
-                        rewardedResponses.has(r.id)
-                          ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                          : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 shadow-sm'
-                      }`}
-                    >
-                      <Star className="w-4 h-4" />
-                      Add Star
-                    </button>
-                    <button
-                      onClick={() => deleteChoiceResponse(r)}
-                      className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold uppercase transition-all bg-red-100 text-red-700 hover:bg-red-200 shadow-sm"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Delete
-                    </button>
-                  </div>
+                <div className="flex items-center gap-2 bg-white/50 p-2 rounded-xl">
+                  <span className="text-lg">{r.choiceEmoji}</span>
+                  <span className="text-xs font-bold text-primary uppercase tracking-widest">
+                    {r.choiceLabel}
+                  </span>
                 </div>
               </div>
             ))
@@ -501,34 +780,253 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
         </div>
       </div>
 
-      {/* Choice Moments Management */}
-      <div className="glass rounded-3xl p-6 space-y-4">
-        <div className="flex items-center gap-3 text-primary font-bold">
-          <Sparkles className="w-5 h-5" />
-          Interactive Moments
+      {/* Love Missions Management */}
+      <div className="glass rounded-3xl p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 text-primary font-bold">
+            <Trophy className="w-5 h-5" />
+            Love Missions
+          </div>
+          <button 
+            onClick={() => setShowTaskForm(!showTaskForm)}
+            className="p-2 bg-primary/10 rounded-xl text-primary hover:bg-primary/20 transition-all"
+          >
+            {showTaskForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+          </button>
         </div>
+
+        <AnimatePresence>
+          {showTaskForm && (
+            <motion.form 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              onSubmit={createTask}
+              className="space-y-3 overflow-hidden"
+            >
+              <input 
+                type="text" 
+                placeholder="Mission Title (e.g., Eat before 10 AM)" 
+                value={taskTitle}
+                onChange={(e) => setTaskTitle(e.target.value)}
+                className="w-full bg-white/50 border-2 border-transparent rounded-2xl px-4 py-3 outline-none focus:border-primary/30 text-sm font-medium"
+              />
+              <textarea 
+                placeholder="Description" 
+                value={taskDesc}
+                onChange={(e) => setTaskDesc(e.target.value)}
+                className="w-full bg-white/50 border-2 border-transparent rounded-2xl px-4 py-3 outline-none focus:border-primary/30 text-sm font-medium h-20 resize-none"
+              />
+              <div className="flex items-center gap-3">
+                <div className="flex-1 flex items-center gap-2 bg-white/50 rounded-2xl px-4 py-3">
+                  <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                  <input 
+                    type="number" 
+                    value={taskStars}
+                    onChange={(e) => setTaskStars(parseInt(e.target.value))}
+                    className="bg-transparent outline-none text-sm font-black w-full"
+                  />
+                </div>
+                <button 
+                  type="submit"
+                  className="bg-primary text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-primary/20"
+                >
+                  Assign
+                </button>
+              </div>
+            </motion.form>
+          )}
+        </AnimatePresence>
+
         <div className="space-y-3">
-          {choiceMoments.length === 0 ? (
-            <p className="text-xs text-slate-400 italic">No interactive moments yet...</p>
-          ) : (
-            choiceMoments.map((moment) => (
-              <div key={moment.id} className="bg-white/30 p-4 rounded-2xl space-y-2">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <div className="text-sm font-black text-slate-700">{moment.question}</div>
-                    <div className="text-[10px] text-slate-400 uppercase font-bold tracking-tighter">{moment.active ? 'Active' : 'Inactive'} • {new Date(moment.createdAt).toLocaleString()}</div>
+          {tasks.filter(t => t.status !== 'claimed').map((task) => (
+            <div key={task.id} className="bg-white/30 p-4 rounded-2xl space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">{task.title}</h3>
+                  <p className="text-[10px] text-slate-500 font-medium mt-1">{task.description}</p>
+                </div>
+                <button 
+                  onClick={() => deleteTask(task.id)}
+                  className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="bg-yellow-400/10 text-yellow-600 px-2 py-0.5 rounded-full text-[10px] font-black flex items-center gap-1">
+                    <Star className="w-3 h-3 fill-yellow-400" />
+                    {task.stars}
                   </div>
-                  <button
-                    onClick={() => deleteChoiceMoment(moment.id)}
-                    className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold uppercase transition-all bg-red-100 text-red-700 hover:bg-red-200 shadow-sm"
+                  <div className={cn(
+                    "px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest",
+                    task.status === 'pending' ? "bg-slate-100 text-slate-400" :
+                    task.status === 'completed_by_user' ? "bg-blue-100 text-blue-500 animate-pulse" :
+                    "bg-green-100 text-green-500"
+                  )}>
+                    {task.status.replace(/_/g, ' ')}
+                  </div>
+                </div>
+
+                {task.status === 'completed_by_user' && (
+                  <button 
+                    onClick={() => approveTask(task.id)}
+                    className="bg-green-500 text-white px-3 py-1.5 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-green-500/20 flex items-center gap-1"
+                  >
+                    <CheckCircle2 className="w-3 h-3" />
+                    Approve
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Bucket List Management */}
+      <div className="glass rounded-3xl p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 text-primary font-bold">
+            <Plus className="w-5 h-5" />
+            Bucket List
+          </div>
+          <button 
+            onClick={() => setShowBucketForm(!showBucketForm)}
+            className="p-2 bg-primary/10 rounded-xl text-primary hover:bg-primary/20 transition-all"
+          >
+            {showBucketForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+          </button>
+        </div>
+
+        <AnimatePresence>
+          {showBucketForm && (
+            <motion.form 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              onSubmit={createBucketItem}
+              className="space-y-3 overflow-hidden"
+            >
+              <input 
+                type="text" 
+                placeholder="Dream Title (e.g., Visit Paris)" 
+                value={bucketTitle}
+                onChange={(e) => setBucketTitle(e.target.value)}
+                className="w-full bg-white/50 border-2 border-transparent rounded-2xl px-4 py-3 outline-none focus:border-primary/30 text-sm font-medium"
+              />
+              <textarea 
+                placeholder="Description" 
+                value={bucketDesc}
+                onChange={(e) => setBucketDesc(e.target.value)}
+                className="w-full bg-white/50 border-2 border-transparent rounded-2xl px-4 py-3 outline-none focus:border-primary/30 text-sm font-medium h-20 resize-none"
+              />
+              <button 
+                type="submit"
+                className="w-full bg-primary text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-primary/20"
+              >
+                Add to List
+              </button>
+            </motion.form>
+          )}
+        </AnimatePresence>
+
+        <div className="space-y-3">
+          {bucketList.map((item) => (
+            <div key={item.id} className="bg-white/30 p-4 rounded-2xl space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <h3 className={cn(
+                    "text-sm font-black uppercase tracking-tight",
+                    item.status === 'completed' ? "text-slate-400 line-through" : item.status === 'pending' ? "text-orange-500 italic" : "text-slate-800"
+                  )}>
+                    {item.title}
+                    {item.status === 'pending' && <span className="ml-2 text-[8px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full not-italic">PROPOSED</span>}
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-medium mt-1">{item.description}</p>
+                </div>
+                <div className="flex gap-1">
+                  {item.status === 'pending' && (
+                    <button 
+                      onClick={() => activateBucketItem(item.id)}
+                      className="p-2 text-orange-500 hover:bg-orange-50 transition-all rounded-xl"
+                      title="Activate Dream"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => deleteBucketItem(item.id)}
+                    className="p-2 text-slate-300 hover:text-red-500 transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
-                    Delete Moment
                   </button>
                 </div>
               </div>
-            ))
-          )}
+
+              {item.status === 'todo' && (
+                <div className="pt-2">
+                  {isCompletingBucketItem === item.id ? (
+                    <div className="space-y-3 bg-white/50 p-3 rounded-xl border border-white">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black text-primary uppercase tracking-widest">Complete Mission</span>
+                        <button onClick={() => setIsCompletingBucketItem(null)}>
+                          <X className="w-3 h-3 text-slate-400" />
+                        </button>
+                      </div>
+                      <input 
+                        type="file" 
+                        accept="image/*"
+                        onChange={(e) => setBucketImage(e.target.files?.[0] || null)}
+                        className="hidden"
+                        id={`bucket-img-${item.id}`}
+                      />
+                      <label 
+                        htmlFor={`bucket-img-${item.id}`}
+                        className="w-full aspect-video bg-white/50 rounded-xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-primary/30 transition-all overflow-hidden"
+                      >
+                        {bucketImage ? (
+                          <img 
+                            src={URL.createObjectURL(bucketImage)} 
+                            className="w-full h-full object-cover" 
+                            alt="Preview" 
+                          />
+                        ) : (
+                          <>
+                            <Camera className="w-6 h-6 text-slate-300" />
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Upload Photo</span>
+                          </>
+                        )}
+                      </label>
+                      <button 
+                        onClick={() => completeBucketItem(item.id, item.title)}
+                        disabled={isUploading || !bucketImage}
+                        className="w-full bg-green-500 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-green-500/20 disabled:opacity-50"
+                      >
+                        {isUploading ? 'Uploading...' : 'Fulfill Dream'}
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => setIsCompletingBucketItem(item.id)}
+                      className="w-full py-3 bg-white/50 rounded-xl text-[10px] font-black text-slate-500 uppercase tracking-widest hover:bg-white transition-all flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      Mark as Fulfilled
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {item.status === 'completed' && (
+                <div className="flex items-center gap-2 text-green-500">
+                  <Sparkles className="w-3 h-3" />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Fulfilled on {new Date(item.completedAt).toLocaleDateString()}</span>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 
@@ -570,14 +1068,35 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Countdown to Magic</p>
                 </div>
               </div>
-              <motion.div 
-                animate={{ rotate: [0, 10, -10, 0] }}
-                transition={{ repeat: Infinity, duration: 4 }}
-                className="bg-white p-2 rounded-xl shadow-sm"
-              >
-                <Clock className="w-5 h-5 text-primary" />
-              </motion.div>
+              <div className="flex items-center gap-2">
+                {currentEvent && (
+                  <button 
+                    onClick={deleteNextEvent}
+                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all rounded-xl"
+                    title="Delete current event"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                )}
+                <motion.div 
+                  animate={{ rotate: [0, 10, -10, 0] }}
+                  transition={{ repeat: Infinity, duration: 4 }}
+                  className="bg-white p-2 rounded-xl shadow-sm"
+                >
+                  <Clock className="w-5 h-5 text-primary" />
+                </motion.div>
+              </div>
             </div>
+
+            {currentEvent && (
+              <div className="bg-white/40 p-4 rounded-2xl border border-white/60">
+                <div className="text-xs font-black text-primary uppercase tracking-widest mb-1">Current Scheduled Event:</div>
+                <div className="text-sm font-bold text-slate-700">{currentEvent.nextEvent}</div>
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
+                  {new Date(currentEvent.countdown).toLocaleDateString()} at {new Date(currentEvent.countdown).toLocaleTimeString()}
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -601,21 +1120,13 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
               </div>
             </div>
 
-            <div className="flex flex-col gap-3">
-              <button 
-                onClick={updateNextEvent}
-                className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-sm uppercase tracking-[0.2em] shadow-2xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 group"
-              >
-                <span>Schedule Event</span>
-                <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </button>
-              <button
-                onClick={deleteNextEvent}
-                className="w-full bg-rose-500/20 text-rose-700 py-3 rounded-2xl font-black text-sm uppercase tracking-[0.2em] hover:bg-rose-500/30 transition-all"
-              >
-                Delete Scheduled Event
-              </button>
-            </div>
+            <button 
+              onClick={updateNextEvent}
+              className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-sm uppercase tracking-[0.2em] shadow-2xl shadow-slate-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 group"
+            >
+              <span>Schedule Event</span>
+              <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </button>
           </div>
         </div>
 
@@ -646,6 +1157,29 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
             >
               {isUploading ? 'Uploading...' : 'Upload Memory'}
             </button>
+
+            {memories.length > 0 && (
+              <div className="space-y-3 pt-4 border-t border-slate-100">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Existing Memories</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {memories.map((m) => (
+                    <div key={m.id} className="bg-white/30 p-2 rounded-2xl flex items-center gap-3 group">
+                      <img src={m.image} className="w-10 h-10 rounded-lg object-cover" alt="" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[10px] font-bold text-slate-700 truncate">{m.caption}</div>
+                        <div className="text-[8px] text-slate-400 uppercase">{new Date(m.createdAt).toLocaleDateString()}</div>
+                      </div>
+                      <button 
+                        onClick={() => deleteMemory(m.id)}
+                        className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all rounded-lg"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -748,7 +1282,18 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
               />
               <div className="space-y-3">
                 {choiceOptions.map((opt, i) => (
-                  <div key={i} className="bg-white/30 p-4 rounded-2xl space-y-2">
+                  <div key={i} className="bg-white/30 p-4 rounded-2xl space-y-2 relative group">
+                    {choiceOptions.length > 2 && (
+                      <button 
+                        onClick={() => {
+                          const newOpts = choiceOptions.filter((_, idx) => idx !== i);
+                          setChoiceOptions(newOpts);
+                        }}
+                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
                     <div className="flex gap-2">
                       <input 
                         type="text" 
@@ -786,6 +1331,16 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
                     />
                   </div>
                 ))}
+                
+                {choiceOptions.length < 5 && (
+                  <button 
+                    onClick={() => setChoiceOptions([...choiceOptions, { label: '', emoji: '✨', response: '', reward: 5 }])}
+                    className="w-full py-2 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 text-xs font-bold hover:bg-white/50 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Add Another Option
+                  </button>
+                )}
               </div>
               <button 
                 onClick={createChoiceMoment}
@@ -795,65 +1350,92 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
               </button>
             </div>
           )}
+
+          {choiceMoments.length > 0 && (
+            <div className="space-y-3 pt-4 border-t border-slate-100">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Recent Choice Moments</div>
+              <div className="space-y-2">
+                {choiceMoments.map((m) => (
+                  <div key={m.id} className="bg-white/30 p-3 rounded-2xl flex items-center justify-between group">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        {m.active && <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />}
+                        <div className="text-xs font-bold text-slate-700 truncate">{m.question}</div>
+                      </div>
+                      <div className="text-[8px] text-slate-400 uppercase font-bold tracking-tighter">
+                        {new Date(m.createdAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => deleteChoiceMoment(m.id)}
+                      className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all rounded-xl"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Gift Creation Modal - Moved to root for better stacking context */}
+      {/* Gift Creation Modal - Redesigned for Android/Mobile feel */}
       <AnimatePresence>
         {showGiftForm && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[99999] bg-slate-950/80 backdrop-blur-2xl flex items-start justify-center p-4 overflow-y-auto pt-12"
+            className="fixed inset-0 z-[99999] bg-slate-950/40 backdrop-blur-sm flex items-end sm:items-center justify-center overflow-hidden"
           >
             <motion.div
-              initial={{ scale: 0.9, y: 100, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.9, y: 100, opacity: 0 }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="bg-white/90 backdrop-blur-md rounded-[4rem] w-full max-w-5xl shadow-[0_0_100px_rgba(0,0,0,0.2)] border-[12px] border-white relative mb-24 overflow-hidden"
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 300 }}
+              className="bg-white w-full h-[92vh] sm:h-auto sm:max-h-[90vh] sm:max-w-4xl rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl flex flex-col overflow-hidden"
             >
-              {/* Modal Header */}
-              <div className="p-12 bg-gradient-to-br from-slate-50 to-white border-b border-slate-100 relative">
-                <div className="absolute top-12 right-12">
+              {/* Android-style Top App Bar */}
+              <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-20">
+                <div className="flex items-center gap-4">
                   <button 
                     onClick={() => setShowGiftForm(false)}
-                    className="bg-slate-900 text-white p-5 rounded-full shadow-2xl hover:scale-110 active:scale-90 transition-all group"
+                    className="p-2 hover:bg-slate-100 rounded-full transition-colors"
                   >
-                    <X className="w-8 h-8 group-hover:rotate-90 transition-transform duration-500" />
+                    <X className="w-6 h-6 text-slate-600" />
                   </button>
+                  <h2 className="text-xl font-bold text-slate-900">Create Gift Set</h2>
                 </div>
-
-                <div className="flex items-center gap-8">
-                  <div className="w-24 h-24 bg-primary rounded-[2rem] flex items-center justify-center shadow-[0_20px_40px_rgba(255,77,109,0.3)] rotate-3">
-                    <Gift className="w-12 h-12 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-5xl font-black tracking-tighter text-slate-900 leading-none">NEW GIFT SET</h2>
-                    <p className="text-sm font-black text-primary uppercase tracking-[0.5em] mt-3">Triple Mystery Deployment</p>
-                  </div>
-                </div>
+                <button 
+                  onClick={createGiftSet}
+                  disabled={isUploading || giftOptions.some(o => !o.title)}
+                  className="px-4 py-2 bg-primary text-white rounded-full text-sm font-bold shadow-md shadow-primary/20 disabled:opacity-50 active:scale-95 transition-all"
+                >
+                  {isUploading ? 'Saving...' : 'Save'}
+                </button>
               </div>
 
-              {/* Modal Body */}
-              <div className="p-12 space-y-12">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Modal Body - Scrollable */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-8 pb-24">
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-primary uppercase tracking-widest">Triple Mystery Deployment</p>
+                  <p className="text-sm text-slate-500">Configure three options for the mystery gift. One will be the primary surprise.</p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {giftOptions.map((opt, i) => (
                     <motion.div 
                       key={i} 
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.1 }}
                       className={cn(
-                        "relative p-8 rounded-[3.5rem] border-4 transition-all duration-700 flex flex-col gap-8",
-                        opt.isPrimary ? "bg-primary/5 border-primary shadow-2xl shadow-primary/10" : "bg-slate-50/50 border-transparent hover:bg-slate-100/50"
+                        "relative p-5 rounded-3xl border-2 transition-all flex flex-col gap-4",
+                        opt.isPrimary ? "bg-primary/5 border-primary shadow-sm" : "bg-slate-50 border-transparent"
                       )}
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <span className="w-8 h-8 bg-slate-900 text-white rounded-full flex items-center justify-center text-xs font-black">{i + 1}</span>
-                          <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Option</span>
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 h-6 bg-slate-900 text-white rounded-full flex items-center justify-center text-[10px] font-black">{i + 1}</span>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Option</span>
                         </div>
                         <button
                           onClick={() => {
@@ -864,26 +1446,28 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
                             setGiftOptions(newOpts);
                           }}
                           className={cn(
-                            "px-6 py-3 rounded-full text-xs font-black uppercase tracking-widest transition-all",
-                            opt.isPrimary ? "bg-primary text-white shadow-xl shadow-primary/30" : "bg-white text-slate-400 hover:text-primary shadow-md"
+                            "px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all",
+                            opt.isPrimary ? "bg-primary text-white" : "bg-white text-slate-400 border border-slate-200"
                           )}
                         >
-                          {opt.isPrimary ? 'PRIMARY' : 'SELECT'}
+                          {opt.isPrimary ? 'PRIMARY' : 'SET PRIMARY'}
                         </button>
                       </div>
 
-                      <div className="space-y-6">
-                        <div className="relative aspect-square bg-white rounded-[2.5rem] border-4 border-dashed border-slate-200 overflow-hidden group cursor-pointer shadow-inner">
+                      <div className="space-y-4">
+                        <div 
+                          className="relative aspect-square bg-white rounded-2xl border-2 border-dashed border-slate-200 overflow-hidden group cursor-pointer flex items-center justify-center"
+                        >
                           {opt.image ? (
                             <img 
                               src={URL.createObjectURL(opt.image)} 
-                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
+                              className="w-full h-full object-cover" 
                               alt="Preview" 
                             />
                           ) : (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-slate-300 group-hover:text-primary transition-colors">
-                              <ImageIcon className="w-12 h-12" />
-                              <span className="text-xs font-black uppercase tracking-widest">Add Visual</span>
+                            <div className="flex flex-col items-center justify-center gap-2 text-slate-300">
+                              <ImageIcon className="w-8 h-8" />
+                              <span className="text-[10px] font-black uppercase tracking-widest">Add Image</span>
                             </div>
                           )}
                           <input 
@@ -898,7 +1482,8 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
                           />
                         </div>
 
-                        <div className="space-y-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Title</label>
                           <input 
                             type="text" 
                             value={opt.title}
@@ -907,42 +1492,32 @@ export default function AdminPanel({ stats, profile }: AdminPanelProps) {
                               newOpts[i].title = e.target.value;
                               setGiftOptions(newOpts);
                             }}
-                            placeholder="Gift Title"
-                            className="w-full bg-white border-2 border-transparent rounded-2xl px-6 py-4 text-sm font-black outline-none shadow-sm focus:border-primary/30 focus:shadow-xl transition-all"
-                          />
-                          <textarea 
-                            value={opt.message}
-                            onChange={(e) => {
-                              const newOpts = [...giftOptions];
-                              newOpts[i].message = e.target.value;
-                              setGiftOptions(newOpts);
-                            }}
-                            placeholder="Write a sweet message..."
-                            className="w-full bg-white border-2 border-transparent rounded-2xl px-6 py-4 text-sm font-medium outline-none shadow-sm focus:border-primary/30 focus:shadow-xl transition-all resize-none h-32"
+                            placeholder="e.g. Secret Box"
+                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:border-primary transition-all"
                           />
                         </div>
                       </div>
                     </motion.div>
                   ))}
                 </div>
+              </div>
 
-                <div className="pt-8">
-                  <button 
-                    onClick={createGiftSet}
-                    disabled={isUploading || giftOptions.some(o => !o.title || !o.message)}
-                    className="w-full bg-slate-900 text-white py-8 rounded-[3rem] text-xl font-black tracking-[0.5em] uppercase shadow-[0_30px_60px_rgba(15,23,42,0.3)] disabled:opacity-50 hover:scale-[1.02] active:scale-[0.98] transition-all relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-white/20 to-primary/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-                    {isUploading ? (
-                      <div className="flex items-center justify-center gap-6">
-                        <Clock className="w-8 h-8 animate-spin" />
-                        <span>INITIATING MAGIC...</span>
-                      </div>
-                    ) : (
-                      'DEPLOY GIFT SET'
-                    )}
-                  </button>
-                </div>
+              {/* Bottom Action Bar - Mobile Only */}
+              <div className="sm:hidden p-4 bg-white border-t border-slate-100 sticky bottom-0 z-20">
+                <button 
+                  onClick={createGiftSet}
+                  disabled={isUploading || giftOptions.some(o => !o.title)}
+                  className="w-full bg-slate-900 text-white py-4 rounded-2xl text-sm font-black tracking-widest uppercase shadow-xl disabled:opacity-50 active:scale-95 transition-all flex items-center justify-center gap-3"
+                >
+                  {isUploading ? (
+                    <>
+                      <Clock className="w-5 h-5 animate-spin" />
+                      <span>SAVING...</span>
+                    </>
+                  ) : (
+                    'DEPLOY GIFT SET'
+                  )}
+                </button>
               </div>
             </motion.div>
           </motion.div>
