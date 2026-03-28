@@ -159,22 +159,22 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
 
   return (
     <div 
-      className="fixed inset-0 z-[60] bg-slate-50/95 backdrop-blur-3xl flex flex-col items-center justify-center p-6 overflow-hidden"
+      className="fixed inset-0 z-[60] bg-slate-50/95 backdrop-blur-3xl flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto"
     >
-      <div className="w-full max-w-5xl flex flex-col items-center relative z-10">
+      <div className="w-full max-w-2xl flex flex-col items-center relative z-10 py-4">
               <AnimatePresence mode="wait">
                 {revealPhase === 'idle' && (
                     <div
-                      className="text-center mb-16"
+                      className="text-center mb-8 sm:mb-16"
                     >
-                      <h2 className="text-6xl font-black text-slate-900 tracking-tighter mb-4 drop-shadow-sm">PICK YOUR DESTINY</h2>
-                      <p className="text-primary font-black uppercase tracking-[0.6em] text-xs animate-pulse">Choose one mystery card</p>
+                      <h2 className="text-3xl sm:text-6xl font-black text-slate-900 tracking-tighter mb-3 sm:mb-4 drop-shadow-sm">PICK YOUR DESTINY</h2>
+                      <p className="text-primary font-black uppercase tracking-[0.3em] sm:tracking-[0.6em] text-xs animate-pulse">Choose one mystery card</p>
                     </div>
                 )}
               </AnimatePresence>
 
-              {/* Card Grid */}
-              <div className="grid grid-cols-3 gap-12 w-full perspective-2000">
+              {/* Card Grid - Mobile Stacked, Desktop 3-column */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-8 md:gap-12 w-full perspective-2000">
                 {[1, 2, 3].map((i) => {
                   const isSelected = selectedOption === i;
                   const isOther = selectedOption !== null && !isSelected;
@@ -188,8 +188,8 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                     <motion.div
                       key={i}
                       animate={{
-                        scale: isSelected ? 1.2 : isOther ? 0.8 : 1,
-                        y: isSelected ? -60 : 0,
+                        scale: isSelected ? 1.05 : isOther ? 0.85 : 1,
+                        y: isSelected ? -20 : 0,
                         rotateY: isFlipped ? 180 : 0,
                         z: isSelected ? 200 : 0
                       }}
@@ -208,23 +208,23 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                     >
                       {/* Card Front (Mystery) */}
                       <div 
-                        className="absolute inset-0 bg-gradient-to-br from-white to-slate-100 rounded-[2.5rem] flex flex-col items-center justify-center gap-8 border-4 border-white shadow-[0_20px_50px_rgba(0,0,0,0.1)]"
+                        className="absolute inset-0 bg-gradient-to-br from-white to-slate-100 rounded-3xl sm:rounded-[2.5rem] flex flex-col items-center justify-center gap-6 sm:gap-8 border-4 border-white shadow-lg sm:shadow-[0_20px_50px_rgba(0,0,0,0.1)]"
                         style={{ 
                           backfaceVisibility: 'hidden', 
                           WebkitBackfaceVisibility: 'hidden',
                           transform: 'translateZ(1px)'
                         }}
                       >
-                        <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center border border-primary/10">
-                          <Heart className="w-10 h-10 text-primary animate-pulse" />
+                        <div className="w-16 h-16 sm:w-20 sm:h-20 bg-primary/5 rounded-full flex items-center justify-center border border-primary/10">
+                          <Heart className="w-8 h-8 sm:w-10 sm:h-10 text-primary animate-pulse" />
                         </div>
-                        <div className="text-slate-200 font-black text-7xl opacity-30 tracking-tighter uppercase">Love</div>
+                        <div className="text-slate-200 font-black text-5xl sm:text-7xl opacity-30 tracking-tighter uppercase">Love</div>
                       </div>
 
                       {/* Card Back (Revealed) */}
                       <div 
                         className={cn(
-                          "absolute inset-0 rounded-[2.5rem] flex flex-col items-center p-8 border-4 overflow-hidden shadow-2xl",
+                          "absolute inset-0 rounded-3xl sm:rounded-[2.5rem] flex flex-col items-center p-4 sm:p-8 border-4 overflow-hidden shadow-xl sm:shadow-2xl",
                           isSelected ? "bg-white border-primary" : "bg-white/80 border-slate-200 backdrop-blur-xl"
                         )}
                         style={{ 
@@ -236,8 +236,8 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                         }}
                       >
                         {isFlipped && (
-                          <div className="w-full h-full flex flex-col items-center">
-                            <div className="w-full aspect-square rounded-3xl overflow-hidden mb-6 shadow-2xl border-2 border-slate-100">
+                          <div className="w-full h-full flex flex-col items-center gap-3 sm:gap-6">
+                            <div className="w-full flex-1 rounded-2xl sm:rounded-3xl overflow-hidden shadow-lg sm:shadow-2xl border-2 border-slate-100">
                               <img 
                                 src={displayOpt.image} 
                                 alt={displayOpt.title} 
@@ -245,20 +245,20 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                               />
                             </div>
                             
-                            <div className="text-center w-full">
+                            <div className="text-center w-full px-2 sm:px-4">
                               <h3 className={cn(
-                                "font-black tracking-tight uppercase leading-none mb-3",
-                                isSelected ? "text-slate-900 text-xl" : "text-slate-700 text-sm"
+                                "font-black tracking-tight uppercase leading-tight mb-2 sm:mb-3",
+                                isSelected ? "text-slate-900 text-lg sm:text-2xl" : "text-slate-700 text-sm sm:text-base"
                               )}>
                                 {displayOpt.title}
                               </h3>
                               
                               {isSelected ? (
-                                <div className="text-primary font-black text-sm italic leading-relaxed mt-6 px-4 bg-primary/5 py-4 rounded-2xl">
+                                <div className="text-primary font-black text-xs sm:text-sm italic leading-relaxed mt-2 sm:mt-6 px-3 sm:px-4 py-3 sm:py-4 bg-primary/5 rounded-xl sm:rounded-2xl">
                                   "{displayOpt.message}"
                                 </div>
                               ) : (
-                                <p className="text-slate-400 font-medium text-[10px] italic leading-tight mt-4 line-clamp-3">
+                                <p className="text-slate-400 font-medium text-[9px] sm:text-[10px] italic leading-tight mt-2 sm:mt-4 line-clamp-2 sm:line-clamp-3">
                                   "{displayOpt.message}"
                                 </p>
                               )}
@@ -275,7 +275,7 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                             scale: [1, 1.3, 1]
                           }}
                           transition={{ duration: 1.5, repeat: Infinity }}
-                          className="absolute inset-0 bg-primary/20 blur-[80px] rounded-[2.5rem] -z-10"
+                          className="absolute inset-0 bg-primary/20 blur-[80px] rounded-3xl sm:rounded-[2.5rem] -z-10"
                         />
                       )}
                     </motion.div>
@@ -289,20 +289,20 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                   <motion.div 
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="absolute top-12 left-0 right-0 flex flex-col items-center justify-center pointer-events-none z-50"
+                    className="absolute top-6 sm:top-12 left-4 sm:left-0 right-4 sm:right-0 flex flex-col items-center justify-center pointer-events-none z-50"
                   >
-                    <div className="text-center space-y-4 bg-white/80 backdrop-blur-xl p-10 rounded-[4rem] border border-white shadow-2xl scale-75 md:scale-100">
-                      <div className="inline-block px-4 py-1 bg-primary/10 rounded-full text-primary text-[10px] font-black uppercase tracking-[0.3em] mb-2">
+                    <div className="text-center space-y-2 sm:space-y-4 bg-white/80 backdrop-blur-xl p-6 sm:p-10 rounded-3xl sm:rounded-[4rem] border border-white shadow-2xl w-full sm:w-auto">
+                      <div className="inline-block px-3 sm:px-4 py-1 bg-primary/10 rounded-full text-primary text-[8px] sm:text-[10px] font-black uppercase tracking-[0.3em] mb-1 sm:mb-2">
                         Mystery Unlocked
                       </div>
-                      <h2 className="text-4xl md:text-6xl font-black text-slate-900 tracking-tighter leading-tight">
+                      <h2 className="text-xl sm:text-4xl md:text-6xl font-black text-slate-900 tracking-tighter leading-tight">
                         CONGRATULATIONS<br />
-                        <span className="text-primary">MY DEAR WIFE! 💖</span>
+                        <span className="text-primary text-lg sm:text-4xl md:text-5xl">MY DEAR WIFE! 💖</span>
                       </h2>
-                      <div className="h-1.5 w-24 bg-primary mx-auto rounded-full" />
-                      <div className="space-y-1">
-                        <p className="text-xs font-black text-slate-400 uppercase tracking-[0.5em]">You have received</p>
-                        <p className="text-xl md:text-2xl font-black text-slate-800 uppercase tracking-[0.2em]">
+                      <div className="h-1 sm:h-1.5 w-16 sm:w-24 bg-primary mx-auto rounded-full" />
+                      <div className="space-y-0.5 sm:space-y-1">
+                        <p className="text-[8px] sm:text-xs font-black text-slate-400 uppercase tracking-[0.5em]">You have received</p>
+                        <p className="text-base sm:text-xl md:text-2xl font-black text-slate-800 uppercase tracking-[0.2em]">
                           {
                             (revealingGiftSet.option1.isPrimary ? revealingGiftSet.option1.title : 
                              revealingGiftSet.option2.isPrimary ? revealingGiftSet.option2.title : 
@@ -321,11 +321,11 @@ export default function GiftSystem({ activeGiftSet, totalStars, lastGiftStarCoun
                   <motion.div 
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className="mt-24 w-full max-w-md"
+                    className="mt-12 sm:mt-24 w-full px-4 sm:px-0"
                   >
                     <button
                       onClick={handleClose}
-                      className="w-full bg-slate-900 text-white py-8 rounded-[2.5rem] font-black text-xl tracking-[0.5em] uppercase shadow-[0_30px_60px_rgba(15,23,42,0.3)] hover:scale-105 active:scale-95 transition-all relative overflow-hidden group"
+                      className="w-full bg-slate-900 text-white py-4 sm:py-8 px-4 sm:px-6 rounded-2xl sm:rounded-[2.5rem] font-black text-sm sm:text-xl tracking-[0.4em] sm:tracking-[0.5em] uppercase shadow-lg sm:shadow-[0_30px_60px_rgba(15,23,42,0.3)] hover:scale-105 active:scale-95 transition-all relative overflow-hidden group"
                     >
                       <div className="absolute inset-0 bg-primary/10 translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500" />
                       <span className="relative z-10">Continue Journey</span>
